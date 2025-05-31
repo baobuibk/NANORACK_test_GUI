@@ -18,15 +18,12 @@ The **SControl** menu allows you to configure system services and serial communi
 - **Fields**:
   - **SSH Service**: Enable or disable SSH service.
   - **VNC Service**: Enable or disable VNC service.
-  - **Set laser**: Select laser type (`int` or `ext`).
-  - **Get current**: Select current type (`int` or `ext`).
-  - **Photodiode Get**: Enable or disable photodiode data retrieval.
   - **Serial Port**: Enable or disable serial communication.
   - **COM**: Select the serial port for communication.
 
 - **Controls**:
   - Use **Up** or **Down** arrow keys to highlight a field.
-  - Press **Enter** on fields like **SSH Service**, **VNC Service**, **Serial Port**, **Set laser**, **Get current**, or **Photodiode Get** to toggle between `Enabled` and `Disabled` or switch types (`int`/`ext`).
+  - Press **Enter** on fields like **SSH Service**, **VNC Service**, **Serial Port**to toggle between `Enabled` and `Disabled`.
   - For the **COM** field, press **Enter** to cycle through available serial ports (e.g., COM1, COM2).
   - After configuring, move to **[ Apply ]** using **Up** or **Down**, then press **Enter** to save changes and apply settings.
 
