@@ -1,0 +1,38 @@
+[
+    {
+        "key": "ADC type",
+        "value": "int"
+    },
+    {
+        "key": "Laser set",
+        "value": "Disabled"
+    },
+    {
+        "key": "Laser type",
+        "value": "int"
+    },
+    {
+        "key": "Laser index",
+        "value": "0"
+    },
+    {
+        "key": "DAC voltage",
+        "value": "100"
+    },
+    {
+        "key": "Get current",
+        "value": "Enabled"
+    },
+    {
+        "key": "Get current type",
+        "value": "int"
+    },
+    {
+        "key": "Photodiode Get",
+        "value": "Disabled"
+    },
+    {
+        "key": "Photodiode index",
+        "value": "12"
+    }
+]

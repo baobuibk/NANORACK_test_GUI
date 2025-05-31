@@ -1,0 +1,18 @@
+[
+    {
+        "key": "CPU Usage",
+        "value": "0.0%"
+    },
+    {
+        "key": "Memory Usage",
+        "value": "89.9%"
+    },
+    {
+        "key": "Disk Usage",
+        "value": "87.2%"
+    },
+    {
+        "key": "Temperature",
+        "value": "N/A°C"
+    }
+]
