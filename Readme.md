@@ -59,8 +59,4 @@ The **Laser** menu allows configuration of laser parameters and photodiode setti
 
 ## Notes
 
-- Ensure a valid serial port is selected and enabled in **SControl** before sending commands in **Laser** or **Logs**.
-- The **Data** panel (right side) displays serial communication logs (e.g., sent commands, received responses) when not in the **Logs** menu.
-- In the **Logs** menu, you can manually enter commands to send via serial (except `help`, which displays supported commands).
-
-For issues or additional commands, refer to the project documentation or contact the development team.
+- Ensure a valid serial port is selected and enabled in **SControl** before sending commands in **Laser** .
