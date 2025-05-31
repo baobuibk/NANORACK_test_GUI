@@ -1,7 +1,7 @@
 [
     {
         "key": "SSH Service",
-        "value": "Enabled"
+        "value": "Disabled"
     },
     {
         "key": "VNC Service",
@@ -9,7 +9,7 @@
     },
     {
         "key": "Serial Port",
-        "value": "Enabled"
+        "value": "Disabled"
     },
     {
         "key": "Port",

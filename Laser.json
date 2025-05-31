@@ -5,7 +5,7 @@
     },
     {
         "key": "Laser set",
-        "value": "Disabled"
+        "value": "Enabled"
     },
     {
         "key": "Laser type",
@@ -13,15 +13,15 @@
     },
     {
         "key": "Laser index",
-        "value": "0"
+        "value": "1"
     },
     {
-        "key": "DAC voltage",
-        "value": "100"
+        "key": "Laser DAC",
+        "value": "50"
     },
     {
         "key": "Get current",
-        "value": "Enabled"
+        "value": "Disabled"
     },
     {
         "key": "Get current type",
@@ -33,6 +33,6 @@
     },
     {
         "key": "Photodiode index",
-        "value": "12"
+        "value": "23"
     }
 ]

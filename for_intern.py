@@ -90,7 +90,7 @@ class RaspiGUI:
                 {"key": "Laser set", "value": "Disabled"},
                 {"key": "Laser type", "value": "int"},
                 {"key": "Laser index", "value": "0"},
-                {"key": "DAC voltage", "value": "0"},
+                {"key": "Laser DAC", "value": "0"},
                 {"key": "Get current", "value": "Disabled"},
                 {"key": "Get current type", "value": "int"},
                 {"key": "Photodiode Get", "value": "Disabled"},
@@ -158,9 +158,9 @@ class RaspiGUI:
             ["clear: to clear the screen"],
             ["get_temp: to get the temperature of the CPU"],
             ["get_time: to get the current time"],
-            ["set_laser: to set laser | format: set_laser [int/ext] [index] [dac_value]"],
-            ["get_current: to get the current"],
-            ["pd_get: to get photodiode | format: pd_get [index]"]
+            # ["set_laser: to set laser | format: set_laser [int/ext] [index] [dac_value]"],
+            # ["get_current: to get the current"],
+            # ["pd_get: to get photodiode | format: pd_get [index]"]
         ]
         
     
@@ -181,10 +181,10 @@ class RaspiGUI:
                 baudrate=115200,
                 timeout=1
             )
-            self.create_info_log = "Open Port successfully"
+            self.create_info_log = "Port opened"
         except serial.SerialException as e:
             self.serial_port = None
-            self.create_info_log = f"Cannot open Port"
+            self.create_info_log = f"Fail open Port"
     
     def get_available_ports(self):
         ports = [port.device for port in serial.tools.list_ports.comports()]
@@ -197,11 +197,11 @@ class RaspiGUI:
             return False
         try:
             self.serial_port.write((command + "\n").encode('utf-8'))
-            self.create_info_log = f"Sent: {command}"
+            self.create_info_log = f"Sent: OK"
             self.log_history.append(self.create_info_log)
             return True
         except serial.SerialException as e:
-            self.create_info_log = f"Sent fail"
+            self.create_info_log = f"Sent: Fail"
             self.log_history.append(self.create_info_log)
             return False
 
@@ -218,7 +218,7 @@ class RaspiGUI:
                 baudrate=115200,
                 timeout=1
             )
-            self.create_info_log = f"Open Port successful"
+            self.create_info_log = f"Port opened"
             return True
         except serial.SerialException as e:
             self.serial_port = None
@@ -473,6 +473,8 @@ class RaspiGUI:
                                 dac_voltage = None
                                 get_current_enabled = False
                                 current_type = None
+                                photodiode_get_enabled = False
+                                photodiode_index = None
                                 for item in data:
                                     if item["key"] == "Laser set" and item["value"] == "Enabled":
                                         laser_set_enabled = True
@@ -480,16 +482,22 @@ class RaspiGUI:
                                         laser_type = item["value"]
                                     if item["key"] == "Laser index":
                                         laser_index = item["value"]
-                                    if item["key"] == "DAC voltage":
+                                    if item["key"] == "Laser DAC":
                                         dac_voltage = item["value"]
                                     if item["key"] == "Get current" and item["value"] == "Enabled":
                                         get_current_enabled = True
                                     if item["key"] == "Get current type":
                                         current_type = item["value"]
+                                    if item["key"] == "Photodiode Get" and item["value"] == "Enabled":
+                                        photodiode_get_enabled = True
+                                    if item["key"] == "Photodiode index":
+                                        photodiode_index = item["value"]
                                 if laser_set_enabled and laser_type in ["int", "ext"] and laser_index.isdigit() and dac_voltage.isdigit():
                                     self.send_serial_command(f"set_laser {laser_type} {laser_index} {dac_voltage}")
                                 if get_current_enabled and current_type in ["int", "ext"]:
                                     self.send_serial_command(f"get_current {current_type}")
+                                if photodiode_get_enabled and photodiode_index.isdigit():
+                                    self.send_serial_command(f"pd_get {photodiode_index}")
                         except Exception as e:
                             pass
                         self.mode = 'menu'
@@ -531,13 +539,13 @@ class RaspiGUI:
                     #         current_field["value"] = self.port_buffer
                     if selectable_items[self.selected_item] == "Laser":
                         current_field = self.settings_data["Laser"][self.selected_info]
-                        if current_field["key"] in ["Laser index", "DAC voltage", "Photodiode index"]:
+                        if current_field["key"] in ["Laser index", "Laser DAC", "Photodiode index"]:
                             new_buffer = (self.port_buffer or "0") + digit
                             if current_field["key"] in ["Laser index", "Photodiode index"]:
-                                if int(new_buffer) <= 35:
+                                if int(new_buffer) <= 36:
                                     self.port_buffer = new_buffer.lstrip("0") or "0"
                                     current_field["value"] = self.port_buffer
-                            elif current_field["key"] == "DAC voltage":
+                            elif current_field["key"] == "Laser DAC":
                                 if int(new_buffer) <= 100:
                                     self.port_buffer = new_buffer.lstrip("0") or "0"
                                     current_field["value"] = self.port_buffer
@@ -566,7 +574,7 @@ class RaspiGUI:
                 #             current_field["value"] = self.port_buffer if self.port_buffer else "0"
                 if selectable_items[self.selected_item] == "Laser":
                     current_field = self.settings_data["Laser"][self.selected_info]
-                    if current_field["key"] in ["Laser index", "DAC voltage", "Photodiode index"]:
+                    if current_field["key"] in ["Laser index", "Laser DAC", "Photodiode index"]:
                         if self.port_buffer is not None and len(self.port_buffer) > 0:
                             self.port_buffer = self.port_buffer[:-1]
                             current_field["value"] = self.port_buffer if self.port_buffer else "0"
