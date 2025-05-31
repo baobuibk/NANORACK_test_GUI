@@ -1,7 +1,7 @@
 [
     {
         "key": "SSH Service",
-        "value": "Disabled"
+        "value": "Enabled"
     },
     {
         "key": "VNC Service",
@@ -13,6 +13,6 @@
     },
     {
         "key": "Port",
-        "value": "COM6"
+        "value": ""
     }
 ]

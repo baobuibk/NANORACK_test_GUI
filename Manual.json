@@ -1,15 +1,15 @@
 [
     {
         "key": "ADC type",
-        "value": "int"
+        "value": "External"
     },
     {
         "key": "Laser set",
-        "value": "Enabled"
+        "value": "Enable"
     },
     {
         "key": "Laser type",
-        "value": "int"
+        "value": "Internal"
     },
     {
         "key": "Laser index",
@@ -21,15 +21,15 @@
     },
     {
         "key": "Get current",
-        "value": "Disabled"
+        "value": "Disable"
     },
     {
         "key": "Get current type",
-        "value": "int"
+        "value": "Internal"
     },
     {
         "key": "Photodiode Get",
-        "value": "Disabled"
+        "value": "Disable"
     },
     {
         "key": "Photodiode index",

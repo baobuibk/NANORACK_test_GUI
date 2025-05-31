@@ -1,0 +1,14 @@
+[
+    {
+        "key": "SSH Service",
+        "value": "Disable"
+    },
+    {
+        "key": "Type Connect",
+        "value": "Serial"
+    },
+    {
+        "key": "Port",
+        "value": "COM57"
+    }
+]

@@ -19,7 +19,7 @@ from tabulate import tabulate
 class RaspiGUI:
 
     def __init__(self):
-        self.sensor_value = [[None]*6 for _ in range(6)]
+        self.sensor_value = [[None]*1 for _ in range(1)]
         #self.sensor_value = [[str(col).center(15) for col in row] for row in self.sensor_value]
         #self.sensor_value = [[str(col).ljust(11) for col in row] for row in self.sensor_value]
         self.output_log_line = [0,0,0,0,0,0]
@@ -49,13 +49,13 @@ class RaspiGUI:
         self.data_input_log = 0
         self.menu_items = [
             "────────────────",
-            "  Status    ",
+            " PreSetup  ",
             "────────────────",
-            " SControl  ",
+            "  Status ",
              "────────────────",
             " Tracking ",
              "────────────────",
-            "  Laser   ",
+            "  Manual   ",
              "────────────────",
             "   Logs   ",
              "────────────────",
@@ -75,25 +75,24 @@ class RaspiGUI:
                 {"key": "Disk Usage", "value": f"{psutil.disk_usage('/').percent}%"},
                 {"key": "Temperature", "value": f"{self.get_cpu_temperature()}°C"}
             ],
-            "SControl": [
-                {"key": "SSH Service", "value": "Enabled"},
-                {"key": "VNC Service", "value": "Disabled"},
-                {"key": "Serial Port", "value": "Disabled"},
+            "PreSetup": [
+                {"key": "SSH Service", "value": "Disable"},
+                {"key": "Type Connect", "value": "Serial"},
                 {"key": "Port", "value": default_com}
             ],
             "Tracking": [
                 {"key": "GPS", "value": "Active"},
                 {"key": "Last Update", "value": self.get_datetime()}
             ],
-            "Laser": [
-                {"key": "ADC type", "value": "int"},
-                {"key": "Laser set", "value": "Disabled"},
-                {"key": "Laser type", "value": "int"},
+            "Manual": [
+                {"key": "ADC type", "value": "External"},
+                {"key": "Laser set", "value": "Disable"},
+                {"key": "Laser type", "value": "Internal"},
                 {"key": "Laser index", "value": "0"},
                 {"key": "Laser DAC", "value": "0"},
-                {"key": "Get current", "value": "Disabled"},
-                {"key": "Get current type", "value": "int"},
-                {"key": "Photodiode Get", "value": "Disabled"},
+                {"key": "Get current", "value": "Disable"},
+                {"key": "Get current type", "value": "Internal"},
+                {"key": "Photodiode Get", "value": "Disable"},
                 {"key": "Photodiode index", "value": "0"}
             ],
             "Logs": [
@@ -101,8 +100,8 @@ class RaspiGUI:
                 {"key": "Errors", "value": "0"}
             ],
             "Option": [
-                {"key": "Language", "value": "Vietnamese"},
-                {"key": "Theme", "value": "Dark"}
+                {"key": "Save file path", "value": "Vietnamese"},
+                {"key": "Prefix", "value": "Dark"}
             ],
             "Quit": (
                 "SpaceLiinTech\n"
@@ -111,7 +110,7 @@ class RaspiGUI:
             )
         }
 
-        self.menu_list = ["Status","SControl","Tracking","Laser","Logs","Option","Quit"]
+        self.menu_list = ["PreSetup","Status","Tracking","Manual","Logs","Option","Quit"]
 
         self.style = Style.from_dict({
             'window': 'bg:#333333 #ffffff',
@@ -134,7 +133,7 @@ class RaspiGUI:
         })
         
 
-        categories = ["Status", "SControl", "Tracking", "Laser", "Logs", "Option", "Quit"]
+        categories = ["Status", "PreSetup", "Tracking", "Manual", "Logs", "Option", "Quit"]
         for cat in categories:
             filename = f"{cat}.json"
             self.settings_data[cat] = self.load_category_data(filename, default_data[cat])
@@ -227,10 +226,10 @@ class RaspiGUI:
 
 
     def update_serial_status(self):
-        for cat in ["SControl", "Laser"]:
+        for cat in ["PreSetup", "Manual"]:
             for item in self.settings_data[cat]:
                 if item["key"] == "Serial Port":
-                    item["value"] = "Enabled" if self.serial_port and self.serial_port.is_open else "Disabled"
+                    item["value"] = "Enable" if self.serial_port and self.serial_port.is_open else "Disable"
                     break
 
     #TAO 1 LUONG DE LIEN TUC UPDATE THOI GIAN 
@@ -355,7 +354,7 @@ class RaspiGUI:
                 
             elif self.mode == 'info':
                 selectable_items = self.get_selectable_items()
-                if selectable_items[self.selected_item] in ["SControl", "Laser"]:
+                if selectable_items[self.selected_item] in ["PreSetup", "Manual"]:
                     if self.selected_info > 0:
                         self.selected_info -= 1
                         self.port_buffer = None
@@ -374,7 +373,7 @@ class RaspiGUI:
                 self.info_frame.title = selectable_items[self.selected_item]
             elif self.mode == 'info':
                 selectable_items = self.get_selectable_items()
-                if selectable_items[self.selected_item] in ["SControl", "Laser"]:
+                if selectable_items[self.selected_item] in ["PreSetup", "Manual"]:
                     max_info = len(self.settings_data[selectable_items[self.selected_item]])  # "Apply" index = len(data)
                     self.selected_info = min(max_info, self.selected_info + 1)
                     self.port_buffer = None
@@ -409,19 +408,22 @@ class RaspiGUI:
             elif self.mode == 'info':
                 selectable_items = self.get_selectable_items()
                 selected_key = selectable_items[self.selected_item]
-                if selected_key in ["SControl", "Laser"]:
+                if selected_key in ["PreSetup", "Manual"]:
                     data = self.settings_data[selected_key]
                     if self.selected_info < len(data):
                         current_field = data[self.selected_info]
-                        if selected_key == "SControl":
-                            if current_field["key"] in ["SSH Service", "VNC Service", "Serial Port"]:
-                                current_field["value"] = "Disabled" if current_field["value"] == "Enabled" else "Enabled"
+                        if selected_key == "PreSetup":
+                            if current_field["key"] in ["Type Connect"]:
+                                pass
+                                # current_field["value"] = "Serial" if current_field["value"] == "TCP/IP" else "TCP/IP"
+                            # if current_field["key"] in ["SSH Service"]:
+                            #     current_field["value"] = "Disable" if current_field["value"] == "Enable" else "Enable"
                             elif current_field["key"] == "Set laser":
                                 parts = current_field["value"].split()
-                                parts[0] = "ext" if parts[0] == "int" else "int"
+                                parts[0] = "External" if parts[0] == "Internal" else "Internal"
                                 current_field["value"] = " ".join(parts)
                             elif current_field["key"] == "Get current":
-                                current_field["value"] = "ext" if current_field["value"] == "int" else "int"
+                                current_field["value"] = "External" if current_field["value"] == "Internal" else "Internal"
                             elif current_field["key"] == "Port":
                                 ports = self.get_available_ports()
                                 if not ports:
@@ -438,21 +440,21 @@ class RaspiGUI:
                                 self.layout.container = self.container
                                 event.app.invalidate()
                                 return        
-                        elif selected_key == "Laser":
+                        elif selected_key == "Manual":
                             if current_field["key"] in ["Laser set", "Get current", "Photodiode Get"]:
-                                current_field["value"] = "Disabled" if current_field["value"] == "Enabled" else "Enabled"
+                                current_field["value"] = "Disable" if current_field["value"] == "Enable" else "Enable"
                             elif current_field["key"] in ["ADC type", "Laser type", "Get current type"]:
-                                current_field["value"] = "ext" if current_field["value"] == "int" else "int"
+                                current_field["value"] = "External" if current_field["value"] == "Internal" else "Internal"
                     else:
                         filename = f"{selected_key}.json"
                         try:
                             with open(filename, "w", encoding="utf-8") as f:
                                 json.dump(data, f, indent=4, ensure_ascii=False)
-                            if selected_key == "SControl":
+                            if selected_key == "PreSetup":
                                 serial_enabled = False
                                 com_port = None
                                 for item in data:
-                                    if item["key"] == "Serial Port" and item["value"] == "Enabled":
+                                    if item["key"] == "Serial Port" and item["value"] == "Enable":
                                         serial_enabled = True
                                     if item["key"] == "Port":
                                         com_port = item["value"]
@@ -466,7 +468,7 @@ class RaspiGUI:
                                     elif serial_enabled:
                                         self.create_info_log = "Invalid Port"
                                 self.update_serial_status()
-                            elif selected_key == "Laser":
+                            elif selected_key == "Manual":
                                 laser_set_enabled = False
                                 laser_type = None
                                 laser_index = None
@@ -529,16 +531,16 @@ class RaspiGUI:
                 if self.mode == 'info':
                     selectable_items = self.get_selectable_items()  #tạo 1 bảng selectable_items với các phần tử không có dấu "-"
                     current_field = None
-                    # if selectable_items[self.selected_item] == "SControl":
-                    #     current_field = self.settings_data["SControl"][self.selected_info] #current_field sẽ lưu 1 thành phần dict của Scontrol
+                    # if selectable_items[self.selected_item] == "PreSetup":
+                    #     current_field = self.settings_data["PreSetup"][self.selected_info] #current_field sẽ lưu 1 thành phần dict của PreSetup
                     #     if current_field["key"] in ["Port", "Photodiode Get"]:
                     #         if self.port_buffer is None or self.port_buffer == "0":
                     #             self.port_buffer = digit
                     #         else:
                     #             self.port_buffer += digit
                     #         current_field["value"] = self.port_buffer
-                    if selectable_items[self.selected_item] == "Laser":
-                        current_field = self.settings_data["Laser"][self.selected_info]
+                    if selectable_items[self.selected_item] == "Manual":
+                        current_field = self.settings_data["Manual"][self.selected_info]
                         if current_field["key"] in ["Laser index", "Laser DAC", "Photodiode index"]:
                             new_buffer = (self.port_buffer or "0") + digit
                             if current_field["key"] in ["Laser index", "Photodiode index"]:
@@ -566,14 +568,14 @@ class RaspiGUI:
             if self.mode == 'info':
                 selectable_items = self.get_selectable_items()
                 current_field = None
-                # if selectable_items[self.selected_item] == "SControl":
-                #     current_field = self.settings_data["SControl"][self.selected_info]
+                # if selectable_items[self.selected_item] == "PreSetup":
+                #     current_field = self.settings_data["PreSetup"][self.selected_info]
                 #     if current_field["key"] in ["Port", "Photodiode Get"]:
                 #         if self.port_buffer is not None and len(self.port_buffer) > 0:
                 #             self.port_buffer = self.port_buffer[:-1]
                 #             current_field["value"] = self.port_buffer if self.port_buffer else "0"
-                if selectable_items[self.selected_item] == "Laser":
-                    current_field = self.settings_data["Laser"][self.selected_info]
+                if selectable_items[self.selected_item] == "Manual":
+                    current_field = self.settings_data["Manual"][self.selected_info]
                     if current_field["key"] in ["Laser index", "Laser DAC", "Photodiode index"]:
                         if self.port_buffer is not None and len(self.port_buffer) > 0:
                             self.port_buffer = self.port_buffer[:-1]
@@ -586,8 +588,8 @@ class RaspiGUI:
         # def _(event):
         #     if self.mode == 'info':
         #         selectable_items = self.get_selectable_items()
-        #         if selectable_items[self.selected_item] == "SControl":
-        #             current_field = self.settings_data["SControl"][self.selected_info]
+        #         if selectable_items[self.selected_item] == "PreSetup":
+        #             current_field = self.settings_data["PreSetup"][self.selected_info]
         #             if current_field["key"] == "Set laser":
         #                 if self.editing_field == "set_laser_type":
         #                     self.editing_field = "set_laser_index"
@@ -646,15 +648,19 @@ class RaspiGUI:
                 centered_lines.append(('', '\n'))
             return centered_lines
         
-        elif selected_key in ["SControl", "Laser"]: #dùng để hiển thị sáng lên cái dòng đang được chọn trong bản infor
+        elif selected_key in ["PreSetup", "Manual"]: #dùng để hiển thị sáng lên cái dòng đang được chọn trong bản infor
             content = [] #tạo 1 tuple lưu text và trạng thái dòng text tương ứng
-            content.append(('class:info.title', f"\n  {selected_key} Settings:\n\n"))#dùng để thêm 1 thành phần tuple là  1 text với trạng thái dòng text ở đây dòng đó là Scontrol và nó cũng được đặt vị trí tiêu đề, chèn lên cái frame
+            if selected_key == "PreSetup":
+                content.append(('class:frame.label', f"\n  ---> {selected_key}: \n\n"))#dùng để thêm 1 thành phần tuple là  1 text với trạng thái dòng text ở đây dòng đó là PreSetup và nó cũng được đặt vị trí tiêu đề, chèn lên cái frame
+            elif selected_key == "Manual":
+                pass
+
             data = self.settings_data[selected_key]
             for i, item in enumerate(data):  #trả về index và 1 phần tử dict của data
                 display_value = f"{item['value']}"
-                if selected_key == "SControl" and item["key"] == "COM" and display_value:
+                if selected_key == "PreSetup" and item["key"] == "COM" and display_value:
                     display_value = f"{display_value}"  # Hiển thị trực tiếp COM3, COM4, ...
-                if selected_key == "Laser" and item["key"] in ["Laser set", "Get current", "Photodiode Get"]:
+                if selected_key == "Manual" and item["key"] in ["Laser set", "Get current", "Photodiode Get"]:
                     display_value += f" [{item['value']}]"
                 if self.selected_info == i and self.mode == 'info':
                     key_style = 'class:info.selected'    #nếu con trỏ đang nằm tại vị trí đó, con trỏ thì nó lưu trong self.selected_info thì nó sẽ lưu cái style nổi bật ở đó
@@ -664,13 +670,29 @@ class RaspiGUI:
                     value_style = 'class:value'
                 content.append((key_style, f"  {item['key']}: ")) #dòng trên và dòng dưới là nó lưu 1 cặp tuple, cặp thứ nhất là key và trạng thái, cặp thuứ 2 là value và trạng thái, mà ở đây cái key là cái giá trị của cái key thứ nhất và value là giá trị của cái key thứ 2
                 content.append((value_style, f"{item['value']}\n"))
+                if selected_key == "Manual":
+                    term_size = os.get_terminal_size()
+                    term_width = term_size.columns - 28
+                    separator = "-" * term_width + "\n"
+                    if item["key"] == "ADC type":
+                        content.append(('class:info', separator))
+                    elif item["key"] == "Laser DAC":
+                        content.append(('class:info', separator))
+                    elif item["key"] == "Get current type":
+                        content.append(('class:info', separator))
+                    elif item["key"] == "Photodiode index":
+                        content.append(('class:info', separator))
+
             if self.selected_info == len(data) and self.mode == 'info':
                 apply_style = 'class:info.selected'
             else:
                 apply_style = 'class:info'
             term_size = os.get_terminal_size()
             term_width = term_size.columns-28
-            apply_text = "[ Apply ]".center(term_width)
+            if selected_key == "PreSetup":
+                apply_text = "[ Connect ]".center(term_width)
+            elif selected_key == "Manual":
+                apply_text = "[ Send ]".center(term_width)
             content.append((apply_style, apply_text+"\n"))
             return content #nó sẽ trả về 1 list chứa các tuple, mỗi tuple sẽ là style của text với text là key hoặc value
             
@@ -684,7 +706,7 @@ class RaspiGUI:
 
         elif selected_key in self.settings_data:
             content = []
-            content.append(('class:info.title', f"\n  {selected_key} Settings:\n\n"))
+            content.append(('class:frame.label', f"\n  ---> {selected_key}:\n\n"))
             data = self.settings_data[selected_key]
             for item in data:
                 content.append(('class:key', f"  {item['key']}: "))
@@ -731,11 +753,13 @@ class RaspiGUI:
             print("Không tìm thấy dữ liệu cảm biến!")
 
     def send_to_matrix(self):
-        with open("test.log", "r", encoding="utf-8") as file:
-            for log_line in file:
-                if "ADC" in log_line: #kiểm tra trong dòng log đó có kí tự nào là ADC k, nếu có thì cho phép đọc dòng đó vì đó là dòng có giá trị cảm biến
-                    self.process_data(log_line)
-                    time.sleep(1)
+        self.format_table(0,0)
+        pass
+        # with open("test.log", "r", encoding="utf-8") as file:
+        #     for log_line in file:
+        #         if "ADC" in log_line: #kiểm tra trong dòng log đó có kí tự nào là ADC k, nếu có thì cho phép đọc dòng đó vì đó là dòng có giá trị cảm biến
+        #             self.process_data(log_line)
+        #             time.sleep(1)
                     #app.invalidate()
 
     def format_table(self,x,y):
@@ -801,93 +825,6 @@ class RaspiGUI:
 
         return True  # Giữ TextArea hoạt động
 
-    '''
-    Vấn đề lỗi nằm ở việc tạo cái cửa sổ cmd, cứ mỗi lần nó tạo nó sẽ đẩy ghi đè 1 hàng
-    Đã tìm được lí do lỗi ghi đè: do là khi ta ấn nút mũi tên lên/ xuống thì nó sẽ ngay lập tức vẽ lại mà hình, nên là nó sẽ
-    vẽ lại màn hình trước xong nó mới kiểm tra việc tạo bảng cmd terminal nên là khi tạo ra cái terminal đó nó sẽ bị đè lên cái sẵn có
-    mà không được update lại, khi ta nhấn các phím lên xuống lần nữa thì nó có vẽ lại nhưng mà cái buffer của nó vẫn còn lưu cái dữ liệu cũ
-    nên nó sẽ bị ghi đè lên cái dữ liệu cũ, nên ta cần phải xóa cái cửa sổ cũ đi trước khi tạo cái mới
-    '''
-    # def get_container(self):
-    #     header = self.create_header()
-
-    #     self.menu_window = Window(FormattedTextControl(self.create_menu_content), width=10)
-    #     side_window = Window(FormattedTextControl("Additional"), width=12)
-
-        
-
-        
-    #     # Tạo cửa sổ hiển thị thông tin Logs
-    #     self.info_up_window = Window(FormattedTextControl(self.create_info_content), width=None, height=None)  # Giới hạn chiều cao
-      
-    #     if (self.selected_item == 4):
-            
-
-    
-    #         #Tạo TextArea cho command input
-    #         if not hasattr(self, 'log_command_input'):
-    #             print("Creating log_command_input")  # Debug
-    #             self.info_window = Window(FormattedTextControl(" "), width=None)
-    #             self.app.invalidate()
-    #             self.log_command_input = TextArea(
-    #                 height=3,
-    #                 prompt=">>> ",
-    #                 multiline=False,
-    #                 accept_handler=self.handle_log_command
-    #             )
-            
-    #          #Tạo TextArea cho command input
-           
-            # print("Creating log_command_input")  # Debug
-            # self.log_command_input = TextArea(
-            #     height=3,
-            #     prompt=">>> ",
-            #     multiline=False,
-            #     accept_handler=self.handle_log_command
-            # )
-
-            
-
-
-
-    #         self.cmd_frame = Frame(self.log_command_input, title="Command Line", width=None, height=3)
-    #         text_input = Window(FormattedTextControl(lambda: f"BAN DA NHAP: {self.text_from_command}"),width=None,height=None)
-            
-    #                 # Kết hợp info và command input theo chiều dọc
-    #         self.info_window = HSplit([
-    #             self.info_up_window,
-    #             text_input,
-    #             self.cmd_frame
-    #         ], width=None, height=None)  # Đảm bảo chiều rộng tự động
-                    
-    #         self.info_frame = Frame(self.info_window, title="Logs",width=None, height=None)
-            
-    #     else:
-    #         self.info_window = Window(FormattedTextControl(self.create_info_content), width=None)
-    #         self.info_frame = Frame(self.info_window, title = lambda: f"{self.menu_list[self.selected_item]}")
-        
-    #     # self.info_window = Window(FormattedTextControl(self.create_info_content), width=None)
-    #     # self.info_frame = Frame(self.info_window, title = lambda: f"{self.menu_list[self.selected_item]}")
-
-
-
-    #     main_content = VSplit([
-    #         Frame(self.menu_window, title="Menu"),
-    #         self.info_frame,
-    #         Frame(side_window, title="Data")
-    #     ])
-
-    #     log_window = Window(FormattedTextControl(lambda: f">>>ITEM: {self.selected_item}"), height=1, style='class:log')
-
-    #     status_bar = VSplit([
-    #         Window(FormattedTextControl("↑↓: Navigate | Enter: Select | Esc: Back | Ctrl+C: Exit"), style='class:status'),
-    #         Window(FormattedTextControl("--------.com"), align=WindowAlign.RIGHT, style='#1313c2')
-    #     ], height=1)
-        
-    #     self.app.invalidate()
-    #     return HSplit([header, main_content, Frame(log_window), status_bar])
-    
-
     def get_container(self):
         header = self.create_header()
         self.menu_window = Window(FormattedTextControl(self.create_menu_content), width=10)
@@ -933,14 +870,14 @@ class RaspiGUI:
         main_content = VSplit([
             Frame(self.menu_window, title="Menu"),
             self.info_frame,
-            Frame(side_window, title="Data")
+            Frame(side_window, title="Return")
         ])
 
         log_window = Window(FormattedTextControl(lambda: f">>>ITEM: {self.selected_item}"), height=1, style='class:log')
 
         status_bar = VSplit([
             Window(FormattedTextControl("↑↓: Navigate | Enter: Select | Esc: Back | Ctrl+C: Exit"), style='class:status'),
-            Window(FormattedTextControl("--------.com"), align=WindowAlign.RIGHT, style='#1313c2')
+            Window(FormattedTextControl("spaceliintech.com"), align=WindowAlign.RIGHT, style='#1313c2')
         ], height=1)
 
         return HSplit([header, main_content, Frame(log_window), status_bar])
@@ -975,62 +912,5 @@ def main():
     gui.run()
 
 if __name__ == "__main__":
+    print("\x1b[8;24;80t", end="", flush=True)
     main()
-
-
-
-'''
-tạo 1 bảng command line trong thanh logs
-
-Làm sao để đặt 1 cửa sổ vào trong 1 cửa sổ đã có sẵn
-cái cửa sổ log đó chỉ xuất hiện khi infor là của menu logs
-Thì do nó lưu mọi thứ vào 1 cái infor conten thì cái tạo cái cửa sổ infor nó chỉ có nghĩa vụ hiện ra cái cửa sổ hiển thị những cái đã chưas thôi
-giờ làm sao cho trong 1 cái cửa sổ mà nó hiện thêm khung frame để cho phép nhập chứ k chỉ hiển thị
-thì ý tưởng code ở trên nó chỉ có thể nhập bằng việc đăng kí các event thôi, event xảy ra thì nó sẽ lại lưu giá trị mới vào 1 file và nó cứ thế hiển thị lại ra màn hình cái file mới đó
-vậy ý tưởng là cũng lưu cái cmd vào 1 file mỗi khi ta nhập, xong nó lại đối chiếú cái đó với những nội dung từ yêu cầu tương ứng mà có sẵn khi ta lưu ở 1 file và lấy cái nội dung hiển thị đó ra
-
-- Viết 1 hàm riêng để hiển thị infor của cái logs, thì khi ta gọi để in ra cửa sổ ta sẽ dựa vào cái self.selected_item để biết nên hiển thị cửa sổ nào
-- 
-
-Ý tưởng mới:
-Cái cửa sổ để hiển thị ra cái infor create_info_content(self) nó có chia các trườnh hợp là gồm Quit và Scontrol rồ thì giơd cho nó thêm một trườmh hợp nó là cái Logs thì mình tạo hẳn cái 
-window mới trong cái đó luôn
-Hmm nhưng mà cái đó nó trả về list tuple.. nên không thể chèn cái frame vào đó được
-
-
-Ý tưởng mới mới
-Khi layout ở cái hàm get_container() thì so sánh xem nó có logs không thì nếu nó là cửa số logs thì chèn nó thêm cái frame
--------------------
-DONE
-'''
-
-
-
-'''
-TASK MỚI:
-Hiển thi 1 ma trận dữ liệu 6x6 gửi ra từ cảm biến trên cửa sổ tracking
-1/Tìm hiểu cái dạng file ghi cảm biến và đọc về
-done!
-2/Tìm cách đọc đúng cái giá trị trên cái dòng đó
-done!
-- Trong file read_log.py
-lỗi phát sinh:
-Khi ta đọc về nhưng nếu giá trị đó cảm biến trả về có 2 lần thôi mà ta so sánh điều kiện có T2 thì nó sẽ lỗi
-3/Tìm cách lưu nó vào đâu đó để hiển thị:
-Done 
-4/Làm sao để hiển thị mỗi giá trị sáng lên khi mỗi lần cập nhật:
-Viết 1 hàm để truyền vào vị trí nào thì nó thay đổi màu khác, còn các vị trí còn lại thì màu trắng bình thường
-- Mỗi lần cập nhật về thì nó có vị trí rồi,
-- Thì giờ từ vị trí đó nó sẽ chèn cái thêm cái trạng thái màu dô, còn các vị trí khác nó lại bình thường
-ý là ở đây mỗi lần nó gọi tới hàm để highlight thì nó lại gán trạng thái màu toàn bộ lại từ đầu
----->Done
-==> Hoàn thành việc hiển thị
-Còn vấn đề tồn đọng là làm sao để nó lưu giữ vị trí dòng đọc hiện tại, với lại file liên tục được mở để đọc thì có vấn đề gì k
-'''
-
-
-
-
-
-        
-        
