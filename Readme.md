@@ -23,7 +23,7 @@ The **SControl** menu allows you to configure system services and serial communi
 
 - **Controls**:
   - Use **Up** or **Down** arrow keys to highlight a field.
-  - Press **Enter** on fields like **SSH Service**, **VNC Service**, **Serial Port**to toggle between `Enabled` and `Disabled`.
+  - Press **Enter** on fields like **SSH Service**, **VNC Service**, **Serial Port** to toggle between `Enabled` and `Disabled`.
   - For the **COM** field, press **Enter** to cycle through available serial ports (e.g., COM1, COM2).
   - After configuring, move to **[ Apply ]** using **Up** or **Down**, then press **Enter** to save changes and apply settings.
 
