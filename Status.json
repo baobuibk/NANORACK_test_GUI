@@ -1,18 +1,18 @@
 [
     {
-        "key": "CPU Usage",
-        "value": "0.0%"
+        "key": "Current UART",
+        "value": "N/A"
     },
     {
-        "key": "Memory Usage",
-        "value": "89.9%"
+        "key": "Current SPI",
+        "value": "N/A"
     },
     {
-        "key": "Disk Usage",
-        "value": "87.2%"
+        "key": "EXP - Current SampleSet",
+        "value": "N/A"
     },
     {
-        "key": "Temperature",
-        "value": "N/A°C"
+        "key": "EXP - Current SampleRate",
+        "value": "N/A"
     }
 ]

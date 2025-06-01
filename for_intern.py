@@ -15,6 +15,7 @@ import pytz
 import psutil
 import re
 from tabulate import tabulate
+from ThreadSerial import ThreadSerial
 
 class RaspiGUI:
 
@@ -33,9 +34,9 @@ class RaspiGUI:
         self.container = self.get_container()
 
         self.text_from_command = "NO VALUE"
-       
+        self.serial_thread = None
         self.serial_port = None
-        self.initialize_serial_port()
+
 
         # Khởi tạo log_command_input
         self.log_command_input = TextArea(
@@ -51,7 +52,7 @@ class RaspiGUI:
             "────────────────",
             " PreSetup  ",
             "────────────────",
-            "  Status ",
+            "  Config   ",
              "────────────────",
             " Tracking ",
              "────────────────",
@@ -69,6 +70,10 @@ class RaspiGUI:
         ports = self.get_available_ports()
         default_com = ports[0] if ports else ""
         default_data = {
+            "Config": [
+                {"key": "CPU Usage", "value": f"{psutil.cpu_percent()}%"},
+                {"key": "Memory Usage", "value": f"{psutil.virtual_memory().percent}%"},
+            ],
             "Status": [
                 {"key": "CPU Usage", "value": f"{psutil.cpu_percent()}%"},
                 {"key": "Memory Usage", "value": f"{psutil.virtual_memory().percent}%"},
@@ -85,15 +90,15 @@ class RaspiGUI:
                 {"key": "Last Update", "value": self.get_datetime()}
             ],
             "Manual": [
-                {"key": "ADC type", "value": "External"},
-                {"key": "Laser set", "value": "Disable"},
-                {"key": "Laser type", "value": "Internal"},
-                {"key": "Laser index", "value": "0"},
+                {"key": "ADC Peripheral", "value": "External"},
+                # {"key": "Set Laser", "value": "No"},
+                {"key": "Laser Type", "value": "Internal"},
+                {"key": "Laser Index", "value": "0"},
                 {"key": "Laser DAC", "value": "0"},
-                {"key": "Get current", "value": "Disable"},
-                {"key": "Get current type", "value": "Internal"},
-                {"key": "Photodiode Get", "value": "Disable"},
-                {"key": "Photodiode index", "value": "0"}
+                # {"key": "Get Current", "value": "No"},
+                {"key": "Current Type", "value": "Internal"},
+                # {"key": "Get PhotoDiode", "value": "No"},
+                {"key": "PhotoDiode Index", "value": "0"}
             ],
             "Logs": [
                 {"key": "Log Level", "value": "INFO"},
@@ -110,7 +115,7 @@ class RaspiGUI:
             )
         }
 
-        self.menu_list = ["PreSetup","Status","Tracking","Manual","Logs","Option","Quit"]
+        self.menu_list = ["PreSetup","Config","Tracking","Manual","Logs","Option","Quit"]
 
         self.style = Style.from_dict({
             'window': 'bg:#333333 #ffffff',
@@ -133,7 +138,7 @@ class RaspiGUI:
         })
         
 
-        categories = ["Status", "PreSetup", "Tracking", "Manual", "Logs", "Option", "Quit"]
+        categories = ["Config", "Status", "PreSetup", "Tracking", "Manual", "Logs", "Option", "Quit"]
         for cat in categories:
             filename = f"{cat}.json"
             self.settings_data[cat] = self.load_category_data(filename, default_data[cat])
@@ -164,6 +169,9 @@ class RaspiGUI:
         
     
         self.create_info_log =" "
+        self.create_logs_log =" "
+        self.current_log = " "
+        self.output_counter = 0
 
         #TẠO LUỒNG ĐỂ CHẠY THỜI GIAN
         time_thread = threading.Thread(target=self.load_time, daemon=True)
@@ -173,56 +181,27 @@ class RaspiGUI:
         sensor_thread = threading.Thread(target= self.send_to_matrix, daemon=True)
         sensor_thread.start()
 
-    def initialize_serial_port(self):
-        try:
-            self.serial_port = serial.Serial(
-                port='COM6',
-                baudrate=115200,
-                timeout=1
-            )
-            self.create_info_log = "Port opened"
-        except serial.SerialException as e:
-            self.serial_port = None
-            self.create_info_log = f"Fail open Port"
+    def _get_log_text(self):
+
+        return self.current_log
     
+    def write_log(self, text: str):
+
+        self.current_log = text
+
+    def test(self):
+        self.output_counter += 1
+        self.current_log = f">>>: Output ({self.output_counter}) <<<"
+
+    def clear_log(self):
+
+        self.current_log = ""
+
     def get_available_ports(self):
-        ports = [port.device for port in serial.tools.list_ports.comports()]
-        return ports if ports else []
+        return [port.device for port in serial.tools.list_ports.comports()]
 
-    def send_serial_command(self, command):
-        if not self.serial_port or not self.serial_port.is_open:
-            self.create_info_log = "Serial not opened"
-            self.log_history.append(self.create_info_log)
-            return False
-        try:
-            self.serial_port.write((command + "\n").encode('utf-8'))
-            self.create_info_log = f"Sent: OK"
-            self.log_history.append(self.create_info_log)
-            return True
-        except serial.SerialException as e:
-            self.create_info_log = f"Sent: Fail"
-            self.log_history.append(self.create_info_log)
-            return False
 
-    def open_serial_port(self, port_name):
-        if not port_name:
-            self.serial_port = None
-            self.create_info_log = "No Port"
-            return False
-        try:
-            if self.serial_port and self.serial_port.is_open:
-                self.serial_port.close()
-            self.serial_port = serial.Serial(
-                port=port_name,
-                baudrate=115200,
-                timeout=1
-            )
-            self.create_info_log = f"Port opened"
-            return True
-        except serial.SerialException as e:
-            self.serial_port = None
-            self.create_info_log = f"Fail open Port"
-            return False
+
 
 
     def update_serial_status(self):
@@ -354,7 +333,7 @@ class RaspiGUI:
                 
             elif self.mode == 'info':
                 selectable_items = self.get_selectable_items()
-                if selectable_items[self.selected_item] in ["PreSetup", "Manual"]:
+                if selectable_items[self.selected_item] in ["PreSetup", "Manual", "Config"]:
                     if self.selected_info > 0:
                         self.selected_info -= 1
                         self.port_buffer = None
@@ -373,7 +352,7 @@ class RaspiGUI:
                 self.info_frame.title = selectable_items[self.selected_item]
             elif self.mode == 'info':
                 selectable_items = self.get_selectable_items()
-                if selectable_items[self.selected_item] in ["PreSetup", "Manual"]:
+                if selectable_items[self.selected_item] in ["PreSetup", "Manual", "Config"]:
                     max_info = len(self.settings_data[selectable_items[self.selected_item]])  # "Apply" index = len(data)
                     self.selected_info = min(max_info, self.selected_info + 1)
                     self.port_buffer = None
@@ -385,6 +364,8 @@ class RaspiGUI:
 
         @self.kb.add('enter')
         def _(event):
+            self.test()
+            
             if event.app.layout.has_focus(self.log_command_input):
                 buf = self.log_command_input.buffer
                 if buf.validate():  # Kiểm tra dữ liệu hợp lệ trước khi gửi
@@ -408,22 +389,33 @@ class RaspiGUI:
             elif self.mode == 'info':
                 selectable_items = self.get_selectable_items()
                 selected_key = selectable_items[self.selected_item]
-                if selected_key in ["PreSetup", "Manual"]:
+                if selected_key in ["PreSetup", "Manual", "Config"]:
                     data = self.settings_data[selected_key]
                     if self.selected_info < len(data):
                         current_field = data[self.selected_info]
-                        if selected_key == "PreSetup":
+
+                        if selected_key == "Config":
+                            config_data = self.settings_data.get("Config", [])
+                            apply_index = len(config_data)
+                            if self.selected_info == apply_index:
+                                # Ghi Config.json
+                                try:
+                                    with open("Config.json", "w", encoding="utf-8") as f:
+                                        json.dump(config_data, f, indent=4, ensure_ascii=False)
+                                    self.create_info_log = "Config saved!"
+                                except Exception as e:
+                                    self.create_info_log = f"Error save: {e}"
+                                # Quay về menu hoặc bạn có thể giữ ở info và reset selected_info=0
+                                self.mode = 'menu'
+                                event.app.layout.focus(self.menu_window)
+
+                        elif selected_key == "PreSetup":
                             if current_field["key"] in ["Type Connect"]:
                                 pass
                                 # current_field["value"] = "Serial" if current_field["value"] == "TCP/IP" else "TCP/IP"
                             # if current_field["key"] in ["SSH Service"]:
                             #     current_field["value"] = "Disable" if current_field["value"] == "Enable" else "Enable"
-                            elif current_field["key"] == "Set laser":
-                                parts = current_field["value"].split()
-                                parts[0] = "External" if parts[0] == "Internal" else "Internal"
-                                current_field["value"] = " ".join(parts)
-                            elif current_field["key"] == "Get current":
-                                current_field["value"] = "External" if current_field["value"] == "Internal" else "Internal"
+
                             elif current_field["key"] == "Port":
                                 ports = self.get_available_ports()
                                 if not ports:
@@ -441,9 +433,62 @@ class RaspiGUI:
                                 event.app.invalidate()
                                 return        
                         elif selected_key == "Manual":
-                            if current_field["key"] in ["Laser set", "Get current", "Photodiode Get"]:
-                                current_field["value"] = "Disable" if current_field["value"] == "Enable" else "Enable"
-                            elif current_field["key"] in ["ADC type", "Laser type", "Get current type"]:
+                            if current_field["key"] == "$: >[Send - Laser Set]":
+                                
+                                self.write_log(">>>: I'm sending laser")
+                                laser_type = None
+                                laser_index = None
+                                for item in data:
+                                    if item["key"] == "Laser Type":
+                                        laser_type = item["value"]
+                                    if item["key"] == "Laser Index":
+                                        laser_index = item["value"]
+                                    if item["key"] == "Laser DAC":
+                                        dac_voltage = item["value"]
+                                if laser_type in ["Internal", "External"] and laser_index.isdigit() and dac_voltage.isdigit():
+                                    try:
+                                        cmd_laser_type = 'int' if laser_type == 'Internal' else 'ext'
+                                        self.serial_thread.send_to_port(f"set_laser {cmd_laser_type} {laser_index} {dac_voltage}")
+                                        self.write_log("Sent: OK")
+                                    except RuntimeError as e:
+                                        self.write_log(f"Sent: Fail - {e}")
+
+
+                            elif current_field["key"] == "$: >[Send - Current Get]":
+
+                                self.write_log(">>>: I'm sending current")
+                                current_type = None
+                                for item in data:
+                                    if item["key"] == "Current Type":
+                                        current_type = item["value"]
+
+                                if current_type in ["Internal", "External"]:
+                                        try:
+                                            cmd_current_type = 'int' if current_type == 'Internal' else 'ext'
+                                            self.serial_thread.send_to_port(f"get_current {cmd_current_type}")
+                                            self.write_log("Sent: OK")
+                                        except RuntimeError as e:
+                                            self.write_log(f"Sent: Fail - {e}")
+
+                            elif current_field["key"] == "$: >[Send - PhotoDiode Get]":
+                                
+                                photodiode_index = None
+                                for item in data:
+                                    if item["key"] == "PhotoDiode Index":
+                                        photodiode_index = item["value"]
+
+                                if photodiode_index.isdigit():
+                                        try:
+                                            self.serial_thread.send_to_port(f"pd_get {photodiode_index}")
+                                            self.write_log("Sent: OK")
+                                        except RuntimeError as e:
+                                            self.write_log(f"Sent: Fail - {e}")
+
+
+
+                            # if current_field["key"] in ["Set Laser", "Get Current", "Get PhotoDiode"]:
+                            #     current_field["value"] = "No" if current_field["value"] == "Yes" else "Yes"
+                            if current_field["key"] in ["ADC Peripheral", "Laser Type", "Current Type"]:
                                 current_field["value"] = "External" if current_field["value"] == "Internal" else "Internal"
                     else:
                         filename = f"{selected_key}.json"
@@ -451,55 +496,38 @@ class RaspiGUI:
                             with open(filename, "w", encoding="utf-8") as f:
                                 json.dump(data, f, indent=4, ensure_ascii=False)
                             if selected_key == "PreSetup":
+                                self.test()
+
                                 serial_enabled = False
                                 com_port = None
                                 for item in data:
-                                    if item["key"] == "Serial Port" and item["value"] == "Enable":
+                                    if item["key"] == "Type Connect" and item["value"] == "Serial":
                                         serial_enabled = True
                                     if item["key"] == "Port":
                                         com_port = item["value"]
                                 if serial_enabled and com_port:
-                                    self.open_serial_port(com_port)
+                                    try:
+
+                                        if self.serial_thread:
+                                            self.serial_thread.Stop()
+                                        self.serial_thread = ThreadSerial( port=com_port, baudrate=115200, timeout= 2)
+                                        self.serial_thread.port_connection_found_callback = self.on_serial_connect
+                                        self.serial_thread.port_read_callback = self.on_serial_data
+                                        self.serial_thread.port_disconnection_callback = self.on_serial_disconnect
+                                        threading.Thread(target=self.serial_thread.Start, daemon=True).start()
+                                        self.write_log(f">>>: {com_port} Opened, Baudrate: 115200")
+                                    except RuntimeError as e:
+                                        self.write_log(f">>>: Failed to open port {com_port}: {e}")
                                 else:
-                                    if self.serial_port and self.serial_port.is_open:
-                                        self.serial_port.close()
-                                        self.serial_port = None
-                                        self.create_info_log = "Port closed"
+                                    if self.serial_thread:
+                                        self.serial_thread.Stop()
+                                        self.serial_thread = None
+                                        self.write_log(">>>: Port closed")
                                     elif serial_enabled:
-                                        self.create_info_log = "Invalid Port"
+                                        self.write_log(">>>: Invalid Port")
                                 self.update_serial_status()
                             elif selected_key == "Manual":
-                                laser_set_enabled = False
-                                laser_type = None
-                                laser_index = None
-                                dac_voltage = None
-                                get_current_enabled = False
-                                current_type = None
-                                photodiode_get_enabled = False
-                                photodiode_index = None
-                                for item in data:
-                                    if item["key"] == "Laser set" and item["value"] == "Enabled":
-                                        laser_set_enabled = True
-                                    if item["key"] == "Laser type":
-                                        laser_type = item["value"]
-                                    if item["key"] == "Laser index":
-                                        laser_index = item["value"]
-                                    if item["key"] == "Laser DAC":
-                                        dac_voltage = item["value"]
-                                    if item["key"] == "Get current" and item["value"] == "Enabled":
-                                        get_current_enabled = True
-                                    if item["key"] == "Get current type":
-                                        current_type = item["value"]
-                                    if item["key"] == "Photodiode Get" and item["value"] == "Enabled":
-                                        photodiode_get_enabled = True
-                                    if item["key"] == "Photodiode index":
-                                        photodiode_index = item["value"]
-                                if laser_set_enabled and laser_type in ["int", "ext"] and laser_index.isdigit() and dac_voltage.isdigit():
-                                    self.send_serial_command(f"set_laser {laser_type} {laser_index} {dac_voltage}")
-                                if get_current_enabled and current_type in ["int", "ext"]:
-                                    self.send_serial_command(f"get_current {current_type}")
-                                if photodiode_get_enabled and photodiode_index.isdigit():
-                                    self.send_serial_command(f"pd_get {photodiode_index}")
+                                pass
                         except Exception as e:
                             pass
                         self.mode = 'menu'
@@ -510,6 +538,8 @@ class RaspiGUI:
 
         @self.kb.add('escape')
         def _(event):
+            self.write_log(">>>: ")
+
             if self.mode == 'info':
                 self.mode = 'menu'
                 self.selected_info = 0
@@ -539,11 +569,29 @@ class RaspiGUI:
                     #         else:
                     #             self.port_buffer += digit
                     #         current_field["value"] = self.port_buffer
+                    if selectable_items[self.selected_item] == "Config":
+                        current_index = self.selected_info
+                        config_data = self.settings_data["Config"]
+                        if current_index in [0, 1]:
+                            # bám sát logic giống Manual:
+                            new_buf = (self.port_buffer or "") + digit
+                            if current_index == 0:  # Sample to get, giới hạn ví dụ <= 75000
+                                if int(new_buf) <= 75000:
+                                    self.port_buffer = new_buf.lstrip("0") or "0"
+                                    config_data[current_index]["value"] = self.port_buffer
+                            elif current_index == 1:  # Sample rate
+                                # Giới hạn tùy ý, hoặc không giới hạn
+                                self.port_buffer = new_buf.lstrip("0") or "0"
+                                config_data[current_index]["value"] = self.port_buffer
+                            self.container = self.get_container()
+                            self.layout.container = self.container
+                            event.app.invalidate()
+
                     if selectable_items[self.selected_item] == "Manual":
                         current_field = self.settings_data["Manual"][self.selected_info]
-                        if current_field["key"] in ["Laser index", "Laser DAC", "Photodiode index"]:
+                        if current_field["key"] in ["Laser Index", "Laser DAC", "PhotoDiode Index"]:
                             new_buffer = (self.port_buffer or "0") + digit
-                            if current_field["key"] in ["Laser index", "Photodiode index"]:
+                            if current_field["key"] in ["Laser Index", "PhotoDiode Index"]:
                                 if int(new_buffer) <= 36:
                                     self.port_buffer = new_buffer.lstrip("0") or "0"
                                     current_field["value"] = self.port_buffer
@@ -568,6 +616,18 @@ class RaspiGUI:
             if self.mode == 'info':
                 selectable_items = self.get_selectable_items()
                 current_field = None
+                if selectable_items[self.selected_item] == "Config":
+                    current_index = self.selected_info
+                    config_data = self.settings_data["Config"]
+                    if current_index in [0, 1] and self.port_buffer:
+                        self.port_buffer = self.port_buffer[:-1]
+                        if self.port_buffer:
+                            config_data[current_index]["value"] = self.port_buffer
+                        else:
+                            config_data[current_index]["value"] = "0"
+                        self.container = self.get_container()
+                        self.layout.container = self.container
+                        event.app.invalidate()
                 # if selectable_items[self.selected_item] == "PreSetup":
                 #     current_field = self.settings_data["PreSetup"][self.selected_info]
                 #     if current_field["key"] in ["Port", "Photodiode Get"]:
@@ -576,7 +636,7 @@ class RaspiGUI:
                 #             current_field["value"] = self.port_buffer if self.port_buffer else "0"
                 if selectable_items[self.selected_item] == "Manual":
                     current_field = self.settings_data["Manual"][self.selected_info]
-                    if current_field["key"] in ["Laser index", "Laser DAC", "Photodiode index"]:
+                    if current_field["key"] in ["Laser Index", "Laser DAC", "PhotoDiode Index"]:
                         if self.port_buffer is not None and len(self.port_buffer) > 0:
                             self.port_buffer = self.port_buffer[:-1]
                             current_field["value"] = self.port_buffer if self.port_buffer else "0"
@@ -609,6 +669,17 @@ class RaspiGUI:
         #     self.layout.container = self.container
         #     event.app.invalidate()
 
+
+    def on_serial_connect(self, port, ser):
+        self.write_log(f">>>: {port} Opened, Baudrate: {ser.baudrate}")
+
+    def on_serial_data(self, port, ser, data):
+        self.write_log( f">>>: Received from {port}: {data}")
+        self.write_log(f">>>: Received from {port}: (Length: {len(data)})")
+
+
+    def on_serial_disconnect(self, port):
+        self.write_log(f">>>: Disconnected from {port}")
 
     def create_menu_content(self):  #Tạo 1 list lồng tuple têntên content để lưu trang thái của cả cái menu, là kiểu đang chọn cái nào thì nó đổi màu cái đó
         content = []          #Nó sẽ lưu thành 1 list nhiều tuple, mỗi tuple là 1 cặp gồm (trạng thái màu, nội dungdung)
@@ -660,40 +731,66 @@ class RaspiGUI:
                 display_value = f"{item['value']}"
                 if selected_key == "PreSetup" and item["key"] == "COM" and display_value:
                     display_value = f"{display_value}"  # Hiển thị trực tiếp COM3, COM4, ...
-                if selected_key == "Manual" and item["key"] in ["Laser set", "Get current", "Photodiode Get"]:
-                    display_value += f" [{item['value']}]"
+                if selected_key == "Manual" and i == 0:
+                    term_size = os.get_terminal_size()
+                    term_width = term_size.columns - 28
+                    separator = "---[Laser]"+"-" * term_width + "\n"
+                    content.append(('class:info', separator))
+                
                 if self.selected_info == i and self.mode == 'info':
                     key_style = 'class:info.selected'    #nếu con trỏ đang nằm tại vị trí đó, con trỏ thì nó lưu trong self.selected_info thì nó sẽ lưu cái style nổi bật ở đó
                     value_style = 'class:info.selected'  
                 else:
-                    key_style = 'class:key'
-                    value_style = 'class:value'
+                    if item["key"] == "$: >[Send - Laser Set]" or item["key"] == "$: >[Send - Current Get]"  or item["key"] == "$: >[Send - PhotoDiode Get]" :
+                        key_style = 'class:frame.label'
+                        value_style = 'class:value'
+                    else:
+                        key_style = 'class:key'
+                        value_style = 'class:value'
                 content.append((key_style, f"  {item['key']}: ")) #dòng trên và dòng dưới là nó lưu 1 cặp tuple, cặp thứ nhất là key và trạng thái, cặp thuứ 2 là value và trạng thái, mà ở đây cái key là cái giá trị của cái key thứ nhất và value là giá trị của cái key thứ 2
                 content.append((value_style, f"{item['value']}\n"))
                 if selected_key == "Manual":
+                    self.write_log(f">>>: +{self.selected_info}")
                     term_size = os.get_terminal_size()
                     term_width = term_size.columns - 28
                     separator = "-" * term_width + "\n"
-                    if item["key"] == "ADC type":
-                        content.append(('class:info', separator))
-                    elif item["key"] == "Laser DAC":
-                        content.append(('class:info', separator))
-                    elif item["key"] == "Get current type":
-                        content.append(('class:info', separator))
-                    elif item["key"] == "Photodiode index":
+
+                    if item["key"] == "$: >[Send - Laser Set]":
+                        separator = "---[Laser Current]"+"-" * term_width + "\n"
                         content.append(('class:info', separator))
 
-            if self.selected_info == len(data) and self.mode == 'info':
-                apply_style = 'class:info.selected'
-            else:
-                apply_style = 'class:info'
-            term_size = os.get_terminal_size()
-            term_width = term_size.columns-28
+                    if item["key"] == "Laser DAC" or item["key"] == "Current Type" or item["key"] == "PhotoDiode Index":
+                        separator = "-" * term_width + "\n"
+                        content.append(('class:info', separator))
+  
+                    elif item["key"] == "$: >[Send - Current Get]":
+                        # content.append(('class:info', separator))
+                        separator = "---[PhotoDiode]"+"-" * term_width + "\n"
+                        content.append(('class:info', separator))
+
+
             if selected_key == "PreSetup":
+                if self.selected_info == len(data) and self.mode == 'info':
+                    apply_style = 'class:info.selected'
+                else:
+                    apply_style = 'class:info'
+                term_size = os.get_terminal_size()
+                term_width = term_size.columns-28
                 apply_text = "[ Connect ]".center(term_width)
-            elif selected_key == "Manual":
-                apply_text = "[ Send ]".center(term_width)
-            content.append((apply_style, apply_text+"\n"))
+                content.append((apply_style, apply_text+"\n"))
+
+
+            # if self.selected_info == len(data) and self.mode == 'info':
+            #     apply_style = 'class:info.selected'
+            # else:
+            #     apply_style = 'class:info'
+            # term_size = os.get_terminal_size()
+            # term_width = term_size.columns-28
+            # if selected_key == "PreSetup":
+            #     apply_text = "[ Connect ]".center(term_width)
+            # elif selected_key == "Manual":
+            #     apply_text = "[ Send ]".center(term_width)
+            # content.append((apply_style, apply_text+"\n"))
             return content #nó sẽ trả về 1 list chứa các tuple, mỗi tuple sẽ là style của text với text là key hoặc value
             
             
@@ -702,7 +799,65 @@ class RaspiGUI:
         elif selected_key == "Tracking":
             content = self.formatted 
             return content
-        
+
+        elif selected_key == "Config":
+            content = []
+            content.append(('class:frame.label', f"\n  ---> Config:\n\n"))
+            config_data = self.settings_data.get("Config", [])
+
+            # Tính term_width để căn chỉnh nội dung (giống cách bạn làm trong PreSetup/Manual)
+            term_size = os.get_terminal_size()
+            term_width = term_size.columns - 28
+
+            # In từng dòng của config_data: "Sample to get" và "Sample rate"
+            for i, field in enumerate(config_data):
+                # Nếu đang focus (selected_info) thì highlight
+                if self.selected_info == i and self.mode == 'info':
+                    key_style = 'class:info.selected'
+                    value_style = 'class:info.selected'
+                else:
+                    key_style = 'class:key'
+                    value_style = 'class:value'
+
+                content.append((key_style, f"  {field['key']}: "))
+                content.append((value_style, f"{field['value']}\n"))
+
+            # In nút [ Apply ] tương tự như PreSetup/Manual
+            apply_index = len(config_data)  # khi selected_info == apply_index sẽ highlight nút
+            if self.selected_info == apply_index and self.mode == 'info':
+                apply_style = 'class:info.selected'
+            else:
+                apply_style = 'class:info'
+            apply_text = "[ Apply ]".center(term_width)
+            content.append((apply_style, apply_text + "\n"))
+
+            ################################################
+            # 2) Chèn separator giữa Config và Status      #
+            ################################################
+            separator = "-" * term_width + "\n"
+            content.append(('class:info', separator))
+
+            #########################################
+            # 3) In phần Status thật (kết nối UART/SPI, #
+            #    và hiển thị expected từ Config.json ) #
+            #########################################
+            content.append(('class:frame.label', f"\n  ---> Status:\n\n"))
+
+            status_data = self.settings_data.get("Status", [])
+
+            # Tính term_width để căn chỉnh nội dung (giống cách bạn làm trong PreSetup/Manual)
+            term_size = os.get_terminal_size()
+            term_width = term_size.columns - 28
+
+            # In từng dòng của config_data: "Sample to get" và "Sample rate"
+            for i, field in enumerate(status_data):
+                key_style = 'class:key'
+                value_style = 'class:value'
+                content.append((key_style, f"  {field['key']}: "))
+                content.append((value_style, f"{field['value']}\n"))
+
+
+            return content       
 
         elif selected_key in self.settings_data:
             content = []
@@ -815,9 +970,9 @@ class RaspiGUI:
                         self.create_info_log_raw = []
                         for data in self.recommended_command:
                             self.create_info_log_raw.append("".join(data)+"\n")
-                    self.create_info_log = "".join(self.create_info_log_raw)
+                    self.create_logs_log = "".join(self.create_info_log_raw)
                 if self.text_from_command.lower() == "clear":
-                    self.create_info_log = None
+                    self.create_logs_log = None
 
                 
             except Exception as e:
@@ -839,7 +994,7 @@ class RaspiGUI:
         
 
         if self.selected_item == 4:
-            self.info_up_window = Window(FormattedTextControl(self.create_info_log), width=None, height=None)
+            self.info_up_window = Window(FormattedTextControl(self.create_logs_log), width=None, height=None)
             # Kiểm tra nếu `log_command_input` đã tồn tại, xóa nó trước
             if not hasattr(self, 'cmd_frame'):
                 self.cmd_frame = None  
@@ -870,15 +1025,17 @@ class RaspiGUI:
         main_content = VSplit([
             Frame(self.menu_window, title="Menu"),
             self.info_frame,
-            Frame(side_window, title="Return")
+            Frame(side_window, title="Log")
         ])
 
-        log_window = Window(FormattedTextControl(lambda: f">>>ITEM: {self.selected_item}"), height=1, style='class:log')
+        log_window = Window(FormattedTextControl(self._get_log_text), height=1, style='class:frame.label')
 
         status_bar = VSplit([
             Window(FormattedTextControl("↑↓: Navigate | Enter: Select | Esc: Back | Ctrl+C: Exit"), style='class:status'),
             Window(FormattedTextControl("spaceliintech.com"), align=WindowAlign.RIGHT, style='#1313c2')
         ], height=1)
+
+        # self.write_log(">>>: ")
 
         return HSplit([header, main_content, Frame(log_window), status_bar])
 
@@ -913,4 +1070,6 @@ def main():
 
 if __name__ == "__main__":
     print("\x1b[8;24;80t", end="", flush=True)
+    
     main()
+

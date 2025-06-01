@@ -1,38 +1,38 @@
 [
     {
-        "key": "ADC type",
-        "value": "External"
-    },
-    {
-        "key": "Laser set",
-        "value": "Enable"
-    },
-    {
-        "key": "Laser type",
+        "key": "Laser Type",
         "value": "Internal"
     },
     {
-        "key": "Laser index",
-        "value": "1"
+        "key": "Laser Index",
+        "value": "12"
     },
     {
         "key": "Laser DAC",
-        "value": "50"
+        "value": "21"
     },
     {
-        "key": "Get current",
-        "value": "Disable"
+        "key": "$: >[Send - Laser Set]",
+        "value": " "
     },
     {
-        "key": "Get current type",
+        "key": "Current Type",
         "value": "Internal"
     },
     {
-        "key": "Photodiode Get",
-        "value": "Disable"
+        "key": "$: >[Send - Current Get]",
+        "value": " "
     },
     {
-        "key": "Photodiode index",
-        "value": "23"
+        "key": "ADC Peripheral",
+        "value": "External"
+    },
+    {
+        "key": "PhotoDiode Index",
+        "value": "12"
+    },
+    {
+        "key": "$: >[Send - PhotoDiode Get]",
+        "value": " "
     }
 ]
