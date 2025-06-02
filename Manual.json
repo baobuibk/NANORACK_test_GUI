@@ -32,7 +32,15 @@
         "value": "12"
     },
     {
-        "key": "$: >[Send - PhotoDiode Get]",
+        "key": "Step 0: ->[Send - PhotoDiode Set]",
         "value": " "
+    },
+    {
+        "key": "Step 1: ->[Send - Trigger Read]",
+        "value": " "
+    },
+    {
+        "key": "Step 2: ->[Send - PhotoDiode Get]",
+        "value": "Close"
     }
 ]

@@ -12,7 +12,6 @@ from prompt_toolkit.styles import Style
 from datetime import datetime
 from prompt_toolkit.layout.containers import Window
 import pytz
-import psutil
 import re
 from tabulate import tabulate
 from ThreadSerial import ThreadSerial
@@ -20,6 +19,9 @@ from ThreadSerial import ThreadSerial
 class RaspiGUI:
 
     def __init__(self):
+        
+        self.prev_rows, self.prev_cols = os.get_terminal_size()
+
         self.sensor_value = [[None]*1 for _ in range(1)]
         #self.sensor_value = [[str(col).center(15) for col in row] for row in self.sensor_value]
         #self.sensor_value = [[str(col).ljust(11) for col in row] for row in self.sensor_value]
@@ -36,7 +38,25 @@ class RaspiGUI:
         self.text_from_command = "NO VALUE"
         self.serial_thread = None
         self.serial_port = None
+        
+        if not os.path.exists("./Data"):
+            os.makedirs("./Data")
 
+        if not os.path.exists("./Log"):
+            os.makedirs("./Log")
+
+        start_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.uart_log_filename = f"./Log/Log_{start_ts}.log"
+        try:
+            self.uart_log_file = open(self.uart_log_filename, "a")  # 'ab' để ghi nhị phân
+        except Exception as e:
+            print(f"Error opening UART log file {self.uart_log_filename}: {e}")
+            self.uart_log_file = None
+
+        self.save_data_flag = False    
+ 
+        self.log_lines = [] 
+        self.max_log_lines = None 
 
         # Khởi tạo log_command_input
         self.log_command_input = TextArea(
@@ -58,7 +78,7 @@ class RaspiGUI:
              "────────────────",
             "  Manual   ",
              "────────────────",
-            "   Logs   ",
+            " Terminal ",
              "────────────────",
             "  Option  ",
              "────────────────",
@@ -71,19 +91,20 @@ class RaspiGUI:
         default_com = ports[0] if ports else ""
         default_data = {
             "Config": [
-                {"key": "CPU Usage", "value": f"{psutil.cpu_percent()}%"},
-                {"key": "Memory Usage", "value": f"{psutil.virtual_memory().percent}%"},
+                {"key": "CPU Usage", "value": " "},
+                {"key": "Memory Usage", "value": " "},
             ],
             "Status": [
-                {"key": "CPU Usage", "value": f"{psutil.cpu_percent()}%"},
-                {"key": "Memory Usage", "value": f"{psutil.virtual_memory().percent}%"},
-                {"key": "Disk Usage", "value": f"{psutil.disk_usage('/').percent}%"},
-                {"key": "Temperature", "value": f"{self.get_cpu_temperature()}°C"}
+                {"key": "CPU Usage", "value": " "},
+                {"key": "Memory Usage", "value": " "},
+                {"key": "Disk Usage", "value": " "},
+                {"key": "Temperature", "value": " "}
             ],
             "PreSetup": [
                 {"key": "SSH Service", "value": "Disable"},
                 {"key": "Type Connect", "value": "Serial"},
-                {"key": "Port", "value": default_com}
+                {"key": "Port", "value": ""},
+                {"key": "BaudRate", "value": 0}
             ],
             "Tracking": [
                 {"key": "GPS", "value": "Active"},
@@ -100,7 +121,7 @@ class RaspiGUI:
                 # {"key": "Get PhotoDiode", "value": "No"},
                 {"key": "PhotoDiode Index", "value": "0"}
             ],
-            "Logs": [
+            "Terminal": [
                 {"key": "Log Level", "value": "INFO"},
                 {"key": "Errors", "value": "0"}
             ],
@@ -115,7 +136,7 @@ class RaspiGUI:
             )
         }
 
-        self.menu_list = ["PreSetup","Config","Tracking","Manual","Logs","Option","Quit"]
+        self.menu_list = ["PreSetup","Config","Tracking","Manual","Terminal","Option","Quit"]
 
         self.style = Style.from_dict({
             'window': 'bg:#333333 #ffffff',
@@ -138,10 +159,16 @@ class RaspiGUI:
         })
         
 
-        categories = ["Config", "Status", "PreSetup", "Tracking", "Manual", "Logs", "Option", "Quit"]
+        categories = ["Config", "Status", "PreSetup", "Tracking", "Manual", "Terminal", "Option", "Quit"]
         for cat in categories:
             filename = f"{cat}.json"
             self.settings_data[cat] = self.load_category_data(filename, default_data[cat])
+            if cat == "PreSetup":
+                for entry in self.settings_data[cat]:
+                    if entry.get("key") == "Port":
+                        if entry.get("value", "") != "":
+                            entry["value"] = ""
+                            changed = True
             #Hàm này để load từ các file.json vào list self.settings_data, tên các file json cũng ứng với danh mục trong categories
             #self.settings_data lưu dưới dạng các dict lồng nhau
 
@@ -170,6 +197,11 @@ class RaspiGUI:
     
         self.create_info_log =" "
         self.create_logs_log =" "
+
+        self.status_text = "Active"
+        
+        self.serial_connected = False
+
         self.current_log = " "
         self.output_counter = 0
 
@@ -200,8 +232,39 @@ class RaspiGUI:
     def get_available_ports(self):
         return [port.device for port in serial.tools.list_ports.comports()]
 
+    def set_status_text(self, text):
+        """
+        Cập nhật nội dung ô status và invalidate để vẽ lại ngay lập tức.
+        """
+        self.status_text = text
+        # Nếu ứng dụng đã chạy (self.app đã được tạo), hãy gọi invalidate() để cập nhật UI.
+        try:
+            self.app.invalidate()
+        except Exception:
+            pass
 
+    def close_branch_datalog(self):
+        # 1. Nếu đang ở chế độ “Open”, thì đóng file Data và tắt flag
+        if self.save_data_flag:
+            self.save_data_flag = False
+            if self.data_log_file:
+                try:
+                    self.data_log_file.close()
+                    self.write_log(">>>: Data file closed (auto)")
+                except Exception as e:
+                    self.write_log(f">>>: Error closing Data file: {e}")
+                finally:
+                    self.data_log_file = None
 
+            # 2. Nếu đang xem menu Manual và focus đúng Step 2, 
+            #    thì đặt lại giá trị của field về "Open"
+            selectable_items = self.get_selectable_items()
+            if self.mode == 'info' and selectable_items[self.selected_item] == "Manual":
+                manual_list = self.settings_data["Manual"]
+                if 0 <= self.selected_info < len(manual_list):
+                    current_field = manual_list[self.selected_info]
+                    if current_field["key"] == "Step 2: ->[Send - PhotoDiode Get]":
+                        current_field["value"] = "Close"
 
 
     def update_serial_status(self):
@@ -241,12 +304,6 @@ class RaspiGUI:
 
     def is_divider(self, item):
         return set(item.strip()) == {"─"}
-
-    def get_cpu_temperature(self):
-        try:
-            return temp.replace("temp=", "").replace("'C\n", "")
-        except:
-            return "N/A"
 
     def get_terminal_size(self):
         return f"{os.get_terminal_size().columns}x{os.get_terminal_size().lines}"
@@ -305,22 +362,26 @@ class RaspiGUI:
         )
         datetime_frame = Frame(
             Window(FormattedTextControl(lambda: f"[OBC-GUI] DateTime: {self.utils_data.get('timestamp', 'unknown')}"), align=WindowAlign.CENTER),
-            #lambda đối số: hàm thực hiện, nó là 1 hàm ẩn danh cũng là 1 hàm callback, ở lệnh trên thì nó chỉ có hàm k có đối số, và hàm lambda không thực hiện ngay mà sẽ được thực hiện khi có sự thay đổi giao diện, do GUI điều khiển, 
-            #nên mỗi lần GUI thay đổi nó sẽ tự cập nhật, nếu không có lambda thì nó sẽ thực hiện hàm self.utils_data.get() ngay và không updateupdate
+
             width=None,
             height=3,
             title='Datetime'
         )
         status_frame = Frame(
-            Window(FormattedTextControl("Active"), align=WindowAlign.CENTER),
-            width=14, 
-            height=3
+            Window(
+                FormattedTextControl(lambda: self.status_text),
+                align=WindowAlign.CENTER
+            ),
+            width=14,
+            height=3,
+            title="Status"  # (tuỳ chọn) nếu bạn muốn ghi tiêu đề cho khung này
         )
 
         return VSplit([size_frame, datetime_frame, status_frame])
 
 
     def setup_keybindings(self):
+
         #viết một hàm với sự kiện là nó sẽ thực hiện nếu ta bấm phím mũi tên lênlên
         @self.kb.add('up')
         def _(event):
@@ -332,6 +393,7 @@ class RaspiGUI:
                 self.info_frame.title = selectable_items[self.selected_item]
                 
             elif self.mode == 'info':
+                self.close_branch_datalog()
                 selectable_items = self.get_selectable_items()
                 if selectable_items[self.selected_item] in ["PreSetup", "Manual", "Config"]:
                     if self.selected_info > 0:
@@ -351,6 +413,7 @@ class RaspiGUI:
                 selectable_items = self.get_selectable_items()
                 self.info_frame.title = selectable_items[self.selected_item]
             elif self.mode == 'info':
+                self.close_branch_datalog()
                 selectable_items = self.get_selectable_items()
                 if selectable_items[self.selected_item] in ["PreSetup", "Manual", "Config"]:
                     max_info = len(self.settings_data[selectable_items[self.selected_item]])  # "Apply" index = len(data)
@@ -364,7 +427,7 @@ class RaspiGUI:
 
         @self.kb.add('enter')
         def _(event):
-            self.test()
+            # self.test()
             
             if event.app.layout.has_focus(self.log_command_input):
                 buf = self.log_command_input.buffer
@@ -391,14 +454,60 @@ class RaspiGUI:
                 selected_key = selectable_items[self.selected_item]
                 if selected_key in ["PreSetup", "Manual", "Config"]:
                     data = self.settings_data[selected_key]
+                    self.write_log(">>>: Type Enter")
+
+
+                    if self.selected_info == len(data):
+
+                        if selected_key == "Config":
+
+                            if not self.serial_connected or not self.serial_thread:
+                                self.write_log(">>>: Error: Communication not established")
+                                return
+
+                            config_data = self.settings_data.get("Config", [])
+                            apply_index = len(config_data)
+                            
+                            if self.selected_info == apply_index:
+
+                                self.write_log(">>>: I'm sending config")
+                                sample_set = None
+                                sample_rate = None
+                                for item in data:
+                                    if item["key"] == "SampleSet[Sample]":
+                                        sample_set = item["value"]
+                                    if item["key"] == "SampleRate[Sample/s]":
+                                        sample_rate = item["value"]
+                                if sample_set.isdigit() and sample_rate.isdigit():
+                                    try:
+                                        self.serial_thread.send_to_port(f"sp_set_rate {sample_rate} {sample_set}")
+                                        self.write_log("Sent: OK")
+                                    except RuntimeError as e:
+                                        self.write_log(f"Sent: Fail - {e}")
+
+
+                                try:
+                                    with open("Config.json", "w", encoding="utf-8") as f:
+                                        json.dump(config_data, f, indent=4, ensure_ascii=False)
+                                    self.create_info_log = "Config OK!"
+                                except Exception as e:
+                                    self.create_info_log = f"Error save: {e}"
+                                # Quay về menu hoặc bạn có thể giữ ở info và reset selected_info=0
+                                self.mode = 'menu'
+                                event.app.layout.focus(self.menu_window)
+
+
+
+
                     if self.selected_info < len(data):
                         current_field = data[self.selected_info]
 
                         if selected_key == "Config":
                             config_data = self.settings_data.get("Config", [])
                             apply_index = len(config_data)
+                            
                             if self.selected_info == apply_index:
-                                # Ghi Config.json
+
                                 try:
                                     with open("Config.json", "w", encoding="utf-8") as f:
                                         json.dump(config_data, f, indent=4, ensure_ascii=False)
@@ -434,7 +543,9 @@ class RaspiGUI:
                                 return        
                         elif selected_key == "Manual":
                             if current_field["key"] == "$: >[Send - Laser Set]":
-                                
+                                if not self.serial_connected or not self.serial_thread:
+                                    self.write_log(">>>: Error: Communication not established")
+                                    return
                                 self.write_log(">>>: I'm sending laser")
                                 laser_type = None
                                 laser_index = None
@@ -455,7 +566,9 @@ class RaspiGUI:
 
 
                             elif current_field["key"] == "$: >[Send - Current Get]":
-
+                                if not self.serial_connected or not self.serial_thread:
+                                    self.write_log(">>>: Error: Communication not established")
+                                    return
                                 self.write_log(">>>: I'm sending current")
                                 current_type = None
                                 for item in data:
@@ -470,8 +583,64 @@ class RaspiGUI:
                                         except RuntimeError as e:
                                             self.write_log(f"Sent: Fail - {e}")
 
-                            elif current_field["key"] == "$: >[Send - PhotoDiode Get]":
-                                
+
+
+                            elif current_field["key"] == "Step 2: ->[Send - PhotoDiode Get]":
+                                if not self.serial_connected or not self.serial_thread:
+                                    self.write_log(">>>: Error: Communication not established")
+                                    return                                
+                                current_field["value"] = "Close" if current_field["value"] == "Open" else "Open"
+                                if current_field["value"] == "Open":
+                                    try:
+                                        photodiode_index = None
+                                        for item in data:  # data = self.settings_data["Manual"]
+                                            if item["key"] == "PhotoDiode Index":
+                                                photodiode_index = item["value"]
+                                                break
+                                        if photodiode_index is None:
+                                            photodiode_index = "0"
+
+                                        self.save_data_flag = True
+                                        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                        data_filename = f"./Data/Index{photodiode_index}_{ts}.log"
+                                        try:
+                                            self.data_log_file = open(data_filename, "a")  # 'ab' để ghi bytes
+                                        except Exception as e:
+                                            self.write_log(f"Error opening Data file: {e}")
+                                            self.data_log_file = None
+
+                                        self.serial_thread.send_to_port(f"sp_get_buf_c")
+                                        self.write_log("Sent: OK")
+                                    except RuntimeError as e:
+                                        self.write_log(f"Sent: Fail - {e}")
+                                else:
+                                        self.save_data_flag = False
+
+                                        if self.data_log_file:
+                                            try:
+                                                self.data_log_file.close()
+                                                self.write_log(f">>>: Data file closed")
+                                            except Exception as e:
+                                                self.write_log(f">>>: Error closing Data file: {e}")
+                                            finally:
+                                                self.data_log_file = None
+
+                            elif current_field["key"] == "Step 1: ->[Send - Trigger Read]":
+                                if not self.serial_connected or not self.serial_thread:
+                                    self.write_log(">>>: Error: Communication not established")
+                                    return                                
+
+                                try:
+                                    self.serial_thread.send_to_port(f"sp_trig")
+                                    self.write_log("Sent: OK")
+                                except RuntimeError as e:
+                                    self.write_log(f"Sent: Fail - {e}")
+
+
+                            elif current_field["key"] == "Step 0: ->[Send - PhotoDiode Set]":
+                                if not self.serial_connected or not self.serial_thread:
+                                    self.write_log(">>>: Error: Communication not established")
+                                    return                                
                                 photodiode_index = None
                                 for item in data:
                                     if item["key"] == "PhotoDiode Index":
@@ -479,7 +648,7 @@ class RaspiGUI:
 
                                 if photodiode_index.isdigit():
                                         try:
-                                            self.serial_thread.send_to_port(f"pd_get {photodiode_index}")
+                                            self.serial_thread.send_to_port(f"sp_set_pd {photodiode_index}")
                                             self.write_log("Sent: OK")
                                         except RuntimeError as e:
                                             self.write_log(f"Sent: Fail - {e}")
@@ -492,32 +661,46 @@ class RaspiGUI:
                                 current_field["value"] = "External" if current_field["value"] == "Internal" else "Internal"
                     else:
                         filename = f"{selected_key}.json"
+
                         try:
                             with open(filename, "w", encoding="utf-8") as f:
                                 json.dump(data, f, indent=4, ensure_ascii=False)
                             if selected_key == "PreSetup":
-                                self.test()
+                                # self.test()
 
                                 serial_enabled = False
                                 com_port = None
+                                baudrate = None
                                 for item in data:
                                     if item["key"] == "Type Connect" and item["value"] == "Serial":
                                         serial_enabled = True
                                     if item["key"] == "Port":
                                         com_port = item["value"]
+                                    if item["key"] == "BaudRate":
+                                    # Lấy giá trị từ JSON, có thể là số hoặc chuỗi số
+                                        try:
+                                            baudrate = int(item["value"])
+                                        except Exception:
+                                            baudrate = None
+
+
                                 if serial_enabled and com_port:
                                     try:
 
                                         if self.serial_thread:
                                             self.serial_thread.Stop()
-                                        self.serial_thread = ThreadSerial( port=com_port, baudrate=115200, timeout= 2)
+                                            self.serial_thread = None
+                                            self.serial_connected = False
+
+                                        self.serial_thread = ThreadSerial( port=com_port, baudrate=baudrate, timeout= 1)
                                         self.serial_thread.port_connection_found_callback = self.on_serial_connect
                                         self.serial_thread.port_read_callback = self.on_serial_data
                                         self.serial_thread.port_disconnection_callback = self.on_serial_disconnect
                                         threading.Thread(target=self.serial_thread.Start, daemon=True).start()
-                                        self.write_log(f">>>: {com_port} Opened, Baudrate: 115200")
+                                        self.write_log(f">>>: {com_port} Opened, Baudrate: {baudrate}")
                                     except RuntimeError as e:
                                         self.write_log(f">>>: Failed to open port {com_port}: {e}")
+                                        self.serial_connected = False
                                 else:
                                     if self.serial_thread:
                                         self.serial_thread.Stop()
@@ -538,8 +721,8 @@ class RaspiGUI:
 
         @self.kb.add('escape')
         def _(event):
-            self.write_log(">>>: ")
-
+            self.write_log(">>>: Exit")
+            self.close_branch_datalog()
             if self.mode == 'info':
                 self.mode = 'menu'
                 self.selected_info = 0
@@ -555,9 +738,16 @@ class RaspiGUI:
         def _(event):
             event.app.exit()
 
-        for digit in "0123456789": #tạo biến digit duyệt qua từng số từ 0 đến 9 để đăng kí cho hàm _()
-            @self.kb.add(digit)    #bọc cái hàm ở dưới vào trong hàm kb với đối số là digit
-            def _(event, digit=digit): #thì event ở đây sẽ là mỗi khi ta nhập 1 số từ bàn phím
+        for digit in "0123456789": 
+            @self.kb.add(digit) 
+            def _(event, digit=digit): 
+
+                if (hasattr(self, 'log_command_input') 
+                    and event.app.layout.has_focus(self.log_command_input)):
+                    buffer = self.log_command_input.buffer
+                    buffer.insert_text(digit)
+                    return
+                
                 if self.mode == 'info':
                     selectable_items = self.get_selectable_items()  #tạo 1 bảng selectable_items với các phần tử không có dấu "-"
                     current_field = None
@@ -569,6 +759,29 @@ class RaspiGUI:
                     #         else:
                     #             self.port_buffer += digit
                     #         current_field["value"] = self.port_buffer
+
+                    if selectable_items[self.selected_item] == "PreSetup":
+                        current_index = self.selected_info
+                        presetup_data = self.settings_data["PreSetup"]
+
+                        # Trường Port (index = 2) thì vẫn dùng nút Enter để cycle qua các cổng
+                        # Còn trường BaudRate (index = 3) cho phép nhập số
+                        if current_index == 3:  
+                            # Lấy buffer hiện tại, thêm chữ số mới
+                            new_buf = (self.port_buffer or "") + digit
+                            # Giới hạn giá trị BaudRate tối đa (ví dụ <= 1000000)
+                            if int(new_buf) <= 100000000:
+                                self.port_buffer = new_buf.lstrip("0") or "0"
+                                # Lưu tạm vào data (value hiển thị luôn)
+                                presetup_data[current_index]["value"] = self.port_buffer
+                        # Nếu không phải mục BaudRate, không làm gì ở đây
+
+                        # Cập nhật lại giao diện
+                        self.container = self.get_container()
+                        self.layout.container = self.container
+                        event.app.invalidate()
+
+
                     if selectable_items[self.selected_item] == "Config":
                         current_index = self.selected_info
                         config_data = self.settings_data["Config"]
@@ -608,11 +821,36 @@ class RaspiGUI:
 
         @self.kb.add('backspace')
         def _(event):
-            #Kiểm tra xem test area có được focus không, ý là để nó biết backspace đang xử lí cho trường hợp nào á, nếu nó đang được focus thì 
             if event.app.layout.has_focus(self.log_command_input):
                 buf = self.log_command_input.buffer
                 if buf.cursor_position > 0:
                     buf.delete_before_cursor(count=1)
+
+            if self.mode == 'info':
+                selectable_items = self.get_selectable_items()
+
+            # Xử lý Backspace cho PreSetup
+            if selectable_items[self.selected_item] == "PreSetup":
+                current_index = self.selected_info
+                presetup_data = self.settings_data["PreSetup"]
+                if current_index == 3 and self.port_buffer:  # chỉ xóa khi focus BaudRate
+                    # Xóa ký tự cuối
+                    self.port_buffer = self.port_buffer[:-1]
+                    # Cập nhật lại vào data
+                    if self.port_buffer:
+                        presetup_data[current_index]["value"] = self.port_buffer
+                    else:
+                        # Nếu xóa hết, để về "0" hoặc "" tùy bạn muốn
+                        self.port_buffer = ""
+                        presetup_data[current_index]["value"] = ""
+
+                    # Refresh UI
+                    self.container = self.get_container()
+                    self.layout.container = self.container
+                    event.app.invalidate()
+                    return  # thoát, không cần xuống tiếp
+
+
             if self.mode == 'info':
                 selectable_items = self.get_selectable_items()
                 current_field = None
@@ -643,52 +881,91 @@ class RaspiGUI:
                 if current_field:
                     self.lasted_selected_item = self.selected_item
                     event.app.invalidate()
-        # Phím Tab để chuyển đổi giữa các trường của Set laser
-        # @self.kb.add('tab')
-        # def _(event):
-        #     if self.mode == 'info':
-        #         selectable_items = self.get_selectable_items()
-        #         if selectable_items[self.selected_item] == "PreSetup":
-        #             current_field = self.settings_data["PreSetup"][self.selected_info]
-        #             if current_field["key"] == "Set laser":
-        #                 if self.editing_field == "set_laser_type":
-        #                     self.editing_field = "set_laser_index"
-        #                     self.port_buffer = None
-        #                 elif self.editing_field == "set_laser_index":
-        #                     self.editing_field = "set_laser_dac"
-        #                     self.port_buffer = None
-        #                 else:
-        #                     self.editing_field = "set_laser_type"
-        #                     self.port_buffer = None
-        #                 event.app.invalidate()      
-                
-                    
-        # @self.kb.add('c-r')
-        # def _(event):
-        #     self.container = self.get_container()
-        #     self.layout.container = self.container
-        #     event.app.invalidate()
 
 
     def on_serial_connect(self, port, ser):
         self.write_log(f">>>: {port} Opened, Baudrate: {ser.baudrate}")
+        self.serial_connected = True
+        self.set_status_text("Connected")
 
     def on_serial_data(self, port, ser, data):
-        self.write_log( f">>>: Received from {port}: {data}")
-        self.write_log(f">>>: Received from {port}: (Length: {len(data)})")
 
+        self.write_log(f">>>: Received from {port}: (Length: {len(data)})")
+        try:
+            text = data.decode('utf-8', errors='ignore') + '\n' if isinstance(data, (bytes, bytearray)) else str(data) + '\n'
+            text_backup = data.decode('utf-8', errors='ignore') if isinstance(data, (bytes, bytearray)) else str(data)
+        except:
+            text = str(data) + '\n'
+            text_backup = str(data)
+
+        if self.save_data_flag:
+            if self.data_log_file:
+                try:
+                    self.data_log_file.write(text)
+                    self.data_log_file.flush()
+                except Exception:
+                    pass
+        else:
+            if self.uart_log_file:
+                try:
+                    self.uart_log_file.write(text)
+                    self.uart_log_file.flush()
+                except Exception:
+                    pass
+
+        if not self.save_data_flag:
+            new_entry = f"⇒ {text_backup}"
+            self.log_lines.append(new_entry)
+
+            if self.max_log_lines is None:
+                rows, cols = os.get_terminal_size()
+                self.max_log_lines = max(1, int(rows // 6.7))
+            if len(self.log_lines) > self.max_log_lines:
+                self.log_lines.pop(0)
+
+            try:
+                self.app.invalidate()
+            except Exception:
+                pass
+
+
+    # def on_serial_data(self, port, ser, data):
+
+    #     self.write_log(f">>>: Received from {port}: (Length: {len(data)})")
+    #     try:
+    #         text = data.decode('utf-8', errors='ignore') if isinstance(data, (bytes, bytearray)) else str(data)
+    #     except:
+    #         text = str(data)
+
+    #     new_entry = f"⇒ {text}"
+
+    #     # Append và giữ độ dài tối đa
+    #     self.log_lines.append(new_entry)
+
+    #     if self.max_log_lines is None:
+    #         rows, cols = os.get_terminal_size()
+    #         self.max_log_lines = rows//6.7
+    #         if self.max_log_lines < 1:
+    #             self.max_log_lines = 1
+    #     if len(self.log_lines) > self.max_log_lines:
+    #         self.log_lines.pop(0)
+
+    #     try:
+    #         self.app.invalidate()
+    #     except Exception:
+    #         pass
 
     def on_serial_disconnect(self, port):
         self.write_log(f">>>: Disconnected from {port}")
 
-    def create_menu_content(self):  #Tạo 1 list lồng tuple têntên content để lưu trang thái của cả cái menu, là kiểu đang chọn cái nào thì nó đổi màu cái đó
-        content = []          #Nó sẽ lưu thành 1 list nhiều tuple, mỗi tuple là 1 cặp gồm (trạng thái màu, nội dungdung)
-        selectable_index = 0  #Biến để chỉ vị trí cần tô sáng
+    def create_menu_content(self):  
+        content = []         
+        selectable_index = 0  
 
         for item in self.menu_items:
             if self.is_divider(item): 
-                content.append(('', item + "\n"))  #nếu nó duyệt thấy là dấu - thì nó sẽ kh có trạng thái màu và nội dung là cái item đó với việc xuống dòng
-            else: #nếu nó không phải là các dấu - thì nó là các đề mục của mục menu 
+                content.append(('', item + "\n"))  
+            else:
                 style = 'class:menu.selected' if selectable_index == self.selected_item else 'bold' #nếu cái index của hàm này bằng với cái self.selected_item, nghĩa là ta đang chọn mục đó thì nó sẽ lưu tuple(với style là class..., nội dung), còn không thì nó chỉ có style là bold
                 content.append((style, f"{item}\n"))
                 selectable_index += 1
@@ -698,11 +975,10 @@ class RaspiGUI:
     def get_selectable_items(self):
         return [item.strip() for item in self.menu_items if not self.is_divider(item)]
 
-    
-    #Trong hàm dưới đây đã có set title, là nó đặt cái nội dung tiltle ra đè lên cái viền
+
     def create_info_content(self):
-        selectable_items = self.get_selectable_items()       #trả về 1 list không có các dấu "-"
-        selected_key = selectable_items[self.selected_item]  #lấy 1 phần tử của list tùy theo cái con trỏ đang nằm ở đâuđâu
+        selectable_items = self.get_selectable_items()     
+        selected_key = selectable_items[self.selected_item]  
         if selected_key == "Quit":
             logo = self.settings_data.get("Quit", "\n  No information available")
             term_size = os.get_terminal_size()
@@ -719,18 +995,18 @@ class RaspiGUI:
                 centered_lines.append(('', '\n'))
             return centered_lines
         
-        elif selected_key in ["PreSetup", "Manual"]: #dùng để hiển thị sáng lên cái dòng đang được chọn trong bản infor
-            content = [] #tạo 1 tuple lưu text và trạng thái dòng text tương ứng
+        elif selected_key in ["PreSetup", "Manual"]: 
+            content = [] 
             if selected_key == "PreSetup":
-                content.append(('class:frame.label', f"\n  ---> {selected_key}: \n\n"))#dùng để thêm 1 thành phần tuple là  1 text với trạng thái dòng text ở đây dòng đó là PreSetup và nó cũng được đặt vị trí tiêu đề, chèn lên cái frame
+                content.append(('class:frame.label', f"\n  ---> {selected_key}: \n\n"))
             elif selected_key == "Manual":
                 pass
 
             data = self.settings_data[selected_key]
-            for i, item in enumerate(data):  #trả về index và 1 phần tử dict của data
+            for i, item in enumerate(data): 
                 display_value = f"{item['value']}"
                 if selected_key == "PreSetup" and item["key"] == "COM" and display_value:
-                    display_value = f"{display_value}"  # Hiển thị trực tiếp COM3, COM4, ...
+                    display_value = f"{display_value}"  
                 if selected_key == "Manual" and i == 0:
                     term_size = os.get_terminal_size()
                     term_width = term_size.columns - 28
@@ -738,19 +1014,22 @@ class RaspiGUI:
                     content.append(('class:info', separator))
                 
                 if self.selected_info == i and self.mode == 'info':
-                    key_style = 'class:info.selected'    #nếu con trỏ đang nằm tại vị trí đó, con trỏ thì nó lưu trong self.selected_info thì nó sẽ lưu cái style nổi bật ở đó
+                    key_style = 'class:info.selected'   
                     value_style = 'class:info.selected'  
                 else:
-                    if item["key"] == "$: >[Send - Laser Set]" or item["key"] == "$: >[Send - Current Get]"  or item["key"] == "$: >[Send - PhotoDiode Get]" :
+                    if item["key"] == "$: >[Send - Laser Set]" or item["key"] == "$: >[Send - Current Get]":  
+                        key_style = 'class:frame.label'
+                        value_style = 'class:value'
+                    elif item["key"] == "Step 0: ->[Send - PhotoDiode Set]" or item["key"] == "Step 1: ->[Send - Trigger Read]" or item["key"] == "Step 2: ->[Send - PhotoDiode Get]":
                         key_style = 'class:frame.label'
                         value_style = 'class:value'
                     else:
                         key_style = 'class:key'
                         value_style = 'class:value'
-                content.append((key_style, f"  {item['key']}: ")) #dòng trên và dòng dưới là nó lưu 1 cặp tuple, cặp thứ nhất là key và trạng thái, cặp thuứ 2 là value và trạng thái, mà ở đây cái key là cái giá trị của cái key thứ nhất và value là giá trị của cái key thứ 2
+                content.append((key_style, f"  {item['key']}: "))
                 content.append((value_style, f"{item['value']}\n"))
                 if selected_key == "Manual":
-                    self.write_log(f">>>: +{self.selected_info}")
+
                     term_size = os.get_terminal_size()
                     term_width = term_size.columns - 28
                     separator = "-" * term_width + "\n"
@@ -760,8 +1039,9 @@ class RaspiGUI:
                         content.append(('class:info', separator))
 
                     if item["key"] == "Laser DAC" or item["key"] == "Current Type" or item["key"] == "PhotoDiode Index":
-                        separator = "-" * term_width + "\n"
-                        content.append(('class:info', separator))
+                        pass
+                        # separator = "-" * term_width + "\n"
+                        # content.append(('class:info', separator))
   
                     elif item["key"] == "$: >[Send - Current Get]":
                         # content.append(('class:info', separator))
@@ -793,9 +1073,7 @@ class RaspiGUI:
             # content.append((apply_style, apply_text+"\n"))
             return content #nó sẽ trả về 1 list chứa các tuple, mỗi tuple sẽ là style của text với text là key hoặc value
             
-            
-            #đây là chỗ ta sẽ tạo thêm 1 trường hơp nếu nó là logs để cho nó hiển thị cái khuing nhập luioonuioon
-            
+
         elif selected_key == "Tracking":
             content = self.formatted 
             return content
@@ -804,14 +1082,11 @@ class RaspiGUI:
             content = []
             content.append(('class:frame.label', f"\n  ---> Config:\n\n"))
             config_data = self.settings_data.get("Config", [])
-
-            # Tính term_width để căn chỉnh nội dung (giống cách bạn làm trong PreSetup/Manual)
             term_size = os.get_terminal_size()
             term_width = term_size.columns - 28
 
-            # In từng dòng của config_data: "Sample to get" và "Sample rate"
+
             for i, field in enumerate(config_data):
-                # Nếu đang focus (selected_info) thì highlight
                 if self.selected_info == i and self.mode == 'info':
                     key_style = 'class:info.selected'
                     value_style = 'class:info.selected'
@@ -822,8 +1097,7 @@ class RaspiGUI:
                 content.append((key_style, f"  {field['key']}: "))
                 content.append((value_style, f"{field['value']}\n"))
 
-            # In nút [ Apply ] tương tự như PreSetup/Manual
-            apply_index = len(config_data)  # khi selected_info == apply_index sẽ highlight nút
+            apply_index = len(config_data)
             if self.selected_info == apply_index and self.mode == 'info':
                 apply_style = 'class:info.selected'
             else:
@@ -831,25 +1105,15 @@ class RaspiGUI:
             apply_text = "[ Apply ]".center(term_width)
             content.append((apply_style, apply_text + "\n"))
 
-            ################################################
-            # 2) Chèn separator giữa Config và Status      #
-            ################################################
             separator = "-" * term_width + "\n"
             content.append(('class:info', separator))
-
-            #########################################
-            # 3) In phần Status thật (kết nối UART/SPI, #
-            #    và hiển thị expected từ Config.json ) #
-            #########################################
             content.append(('class:frame.label', f"\n  ---> Status:\n\n"))
 
             status_data = self.settings_data.get("Status", [])
 
-            # Tính term_width để căn chỉnh nội dung (giống cách bạn làm trong PreSetup/Manual)
             term_size = os.get_terminal_size()
             term_width = term_size.columns - 28
 
-            # In từng dòng của config_data: "Sample to get" và "Sample rate"
             for i, field in enumerate(status_data):
                 key_style = 'class:key'
                 value_style = 'class:value'
@@ -872,7 +1136,6 @@ class RaspiGUI:
             return [('class:info', "\n  No information available")]
         
     
-    #Tính giá trị trung bình, xét điều kiện lớn hơn 2 là do bỏ 2 giá trị đầu, kiểm tra những số khác 0 và chỉ lấy trung bình những số đó
     def DAC_avarage (self):
         a = 0
         sum = 0
@@ -884,7 +1147,6 @@ class RaspiGUI:
         return f"{sum/a:.2f}" 
     
 
-    #Tiền xủ lý khi đọc từ file.log về
     def process_data(self,log_line):                
         patern = r"C(\d+)-(\d+)"\
                 r".*?\[T: 0\]-\[ADC: (\d+)\]"\
@@ -892,12 +1154,9 @@ class RaspiGUI:
                 r"(?:.*?\[T: 2\]-\[ADC: (\d+)\])?"\
                 r"(?:.*?\[T: 3\]-\[ADC: (\d+)\])?"
         match = re.search(patern, log_line)
-#patern ở đây là 1 regrex dùng để đối chiếu với 1 hàng trong file log, do mỗi lần ta đọc về từ file.log là ta đọc 1 hàng
-#thì ở đây nó trả về 6 cái (\d+) bao gồm hàng, côt, lần lấy 0,1,2,3
-#match = re.search() sẽ lưu nó vào matchmatch
 
         if match:
-            self.output_log_line = list(match.groups()) #match.groups() là lấy tất cả những gì có trong match, list() là lưu nó vào 1 biến mới dưới dạng list
+            self.output_log_line = list(match.groups())
             self.output_log_line = [0 if x is None else x for x in self.output_log_line]
             self.output_log_line = list(map(int,self.output_log_line))
             self.sensor_value[self.output_log_line[0]-1][self.output_log_line[1]-1] = self.DAC_avarage()
@@ -905,7 +1164,7 @@ class RaspiGUI:
             self.format_table(self.output_log_line[0],self.output_log_line[1])
         
         else:
-            print("Không tìm thấy dữ liệu cảm biến!")
+            print("No sensor data found!")
 
     def send_to_matrix(self):
         self.format_table(0,0)
@@ -949,38 +1208,79 @@ class RaspiGUI:
         return self.formatted
 
 
-
-
-
-
-
-
-
-
-
     #HÀM NÀY DÙNG ĐỂ XỬ LÝ LỆNH NHẬN TỪ COMMAND LINE, HOẠT ĐỘNG DỰA TRÊN VIỆC LẤY BUFFER TỪ WINDOW
-    def handle_log_command(self, buffer):
-        self.text_from_command = buffer.text.strip()
-        if self.text_from_command:
-            try:
-                # Ví dụ các lệnh xử lý
-                if self.text_from_command.lower() == "help":
-                    if not hasattr(self, 'create_info_log_raw'):
-                        #self.create_info_log = None
-                        self.create_info_log_raw = []
-                        for data in self.recommended_command:
-                            self.create_info_log_raw.append("".join(data)+"\n")
-                    self.create_logs_log = "".join(self.create_info_log_raw)
-                if self.text_from_command.lower() == "clear":
-                    self.create_logs_log = None
+    # def handle_log_command(self, buffer):
+    #     self.text_from_command = buffer.text.strip()
+    #     if self.text_from_command:
+    #         try:
+    #             # Ví dụ các lệnh xử lý
+    #             if self.text_from_command.lower() == "help":
+    #                 if not hasattr(self, 'create_info_log_raw'):
+    #                     #self.create_info_log = None
+    #                     self.create_info_log_raw = []
+    #                     for data in self.recommended_command:
+    #                         self.create_info_log_raw.append("".join(data)+"\n")
+    #                 self.create_logs_log = "".join(self.create_info_log_raw)
+    #             if self.text_from_command.lower() == "clear":
+    #                 self.create_logs_log = None
 
                 
-            except Exception as e:
-                self.log_command_input.text = f"Error: {str(e)}"
+    #         except Exception as e:
+    #             self.log_command_input.text = f"Error: {str(e)}"
 
-        return True  # Giữ TextArea hoạt động
+    #     return True  # Giữ TextArea hoạt động
+    def handle_log_command(self, buffer):
 
+        cmd = buffer.text.strip()
+        buffer.text = "" 
+
+        if cmd:
+            if self.serial_connected and self.serial_thread:
+                data_bytes = cmd.encode('utf-8') + b"\r\n"
+                try:
+                    self.serial_thread.send_to_port(cmd)
+                    new_entry = f"⇐ {cmd}"
+                except Exception as e:
+                    new_entry = f"⇐ Error sending: {e}"
+
+                if self.uart_log_file:
+                    try:
+                        self.uart_log_file.write(data_bytes)
+                        self.uart_log_file.flush()
+                    except Exception:
+                        pass
+
+            else:
+                new_entry = "Error: Not connected"
+
+            self.log_lines.append(new_entry)
+
+            if self.max_log_lines is None:
+                rows, cols = os.get_terminal_size()
+
+                self.max_log_lines = (rows)//6.7# -2 vì Frame("Terminal") chiếm 2 dòng border
+
+                if self.max_log_lines < 1:
+                    self.max_log_lines = 1
+            if len(self.log_lines) > self.max_log_lines:
+                self.log_lines.pop(0)
+
+        try:
+            self.app.invalidate()
+        except Exception:
+            pass
+
+        return True
+    
     def get_container(self):
+
+        rows, cols = os.get_terminal_size()
+        if (rows, cols) != (self.prev_rows, self.prev_cols):
+            self.log_lines.clear()        # hoặc self.current_log = ""
+            self.max_log_lines = None
+            self.prev_rows, self.prev_cols = rows, cols
+
+
         header = self.create_header()
         self.menu_window = Window(FormattedTextControl(self.create_menu_content), width=10)
         # side_window = Window(FormattedTextControl("Additional"), width=12)
@@ -992,31 +1292,65 @@ class RaspiGUI:
             wrap_lines=True
         )
         
+        rows, cols = os.get_terminal_size()
+        self.max_log_lines = (rows)//6.7# -2 vì Frame("Terminal") chiếm 2 dòng border
+
+
+        side_top_window = Window(
+            FormattedTextControl(lambda:
+                (self.create_info_log or "")
+            ),
+            wrap_lines=True
+        )
+
+        side_bottom_window = Window(
+            FormattedTextControl(lambda:
+
+                (self.create_info_log or "")
+            ),
+            wrap_lines=True
+        )
+
+        side_top_frame = Frame(
+            side_top_window,
+            title="Send",
+            width=14, 
+            style='class:frame'
+        )
+        side_bottom_frame = Frame(
+            side_bottom_window,
+            title="Recv",
+            width=14, 
+            style='class:frame'
+        )
+
+        side_container = HSplit([
+            side_top_frame,
+            side_bottom_frame
+        ])
 
         if self.selected_item == 4:
-            self.info_up_window = Window(FormattedTextControl(self.create_logs_log), width=None, height=None)
+            self.info_up_window = Window(
+                FormattedTextControl(lambda: "\n".join(self.log_lines)),
+                wrap_lines=True
+            )
             # Kiểm tra nếu `log_command_input` đã tồn tại, xóa nó trước
-            if not hasattr(self, 'cmd_frame'):
-                self.cmd_frame = None  
-
-                # Sau đó mới tạo lại từ đầu
+            if not hasattr(self, 'log_command_input'):
                 self.log_command_input = TextArea(
-                    height=3,
+                    height=1,          
                     prompt=">>> ",
                     multiline=False,
                     accept_handler=self.handle_log_command
                 )
 
-            self.cmd_frame = Frame(self.log_command_input, title="Command Line", width=None, height=3)
-            text_input = Window(FormattedTextControl(lambda: f"BAN DA NHAP: {self.text_from_command}"), width=None, height=None)
+            self.cmd_frame = Frame(self.log_command_input, title="Input", width=None, height=3)
 
             self.info_window = HSplit([
                 self.info_up_window,
-                #text_input,
                 self.cmd_frame
             ], width=None, height=None)
 
-            self.info_frame = Frame(self.info_window, title="Logs", width=None, height=None)
+            self.info_frame = Frame(self.info_window, title="Terminal", width=None, height=None)
         else:
             #self.info_up_window = Window(FormattedTextControl(self.create_info_content), width=None, height=None)
             self.info_window = Window(FormattedTextControl(self.create_info_content), width=None)
@@ -1025,7 +1359,7 @@ class RaspiGUI:
         main_content = VSplit([
             Frame(self.menu_window, title="Menu"),
             self.info_frame,
-            Frame(side_window, title="Log")
+            side_container
         ])
 
         log_window = Window(FormattedTextControl(self._get_log_text), height=1, style='class:frame.label')
@@ -1039,17 +1373,6 @@ class RaspiGUI:
 
         return HSplit([header, main_content, Frame(log_window), status_bar])
 
-
-
-
-
-
-
-    #Ở đây vấn đề là do ta gọi cái self.get_container để truyền chỉ 1 lần đầu tiên ta run() nên nó không thể cặp nhật trạng thái bảng dù cho biến selected_item có thay đổi
-    #biến đó nó thay đổi thì khi ta dùng event.app.invalidate() thì nó chỉ vẽ lại nội dung thôi còn cái mà layout cái bảng từ self.get_container vẫn cố định do nó đã truyền cố định lúc đầu
-    #nên ở đây ta phải chèn vào cái event mà cho nó liên tục cập nhật lại cái self.get_container hay có thể hiểu là gọi cái đó ra nhiều lần thì nó mới check điều kiện tại thời điểm nó gọi xem như nào ròi nó mới thực hiện được
-    # 1 sai lầm NGHIÊM TRỌNG là tôi kiểm tra điều kiện trong cái hàm nhưng tôi lại gọi hàm đó có 1 lần:)))  
-
     
     def run(self):
         self.layout = Layout(container=self.get_container())
@@ -1058,12 +1381,26 @@ class RaspiGUI:
             key_bindings=self.kb,
             style=self.style,
             full_screen=True,
-            mouse_support=True,
+            mouse_support=False,
             refresh_interval=1 
         )
         
         self.app.run()
     
+    def __del__(self):
+        # Đóng UART Log
+        if getattr(self, "uart_log_file", None):
+            try:
+                self.uart_log_file.close()
+            except Exception:
+                pass
+        # Đóng Data Log nếu vô tình vẫn mở
+        if getattr(self, "data_log_file", None):
+            try:
+                self.data_log_file.close()
+            except Exception:
+                pass
+
 def main():
     gui = RaspiGUI()
     gui.run()

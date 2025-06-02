@@ -9,6 +9,10 @@
     },
     {
         "key": "Port",
-        "value": "COM3"
+        "value": "COM57"
+    },
+    {
+        "key": "BaudRate",
+        "value": "921600"
     }
 ]

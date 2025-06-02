@@ -21,7 +21,7 @@ def dummy_func4(p1, p2, p3, p4):
     return True
 
 class ThreadSerial:
-    def __init__(self, port=None, baudrate=115200, timeout=2):
+    def __init__(self, port=None, baudrate=115200, timeout=1):
         """Initialize ThreadSerial with optional port, baudrate, and timeout."""
         self.close = False
         self.serial = None
@@ -76,7 +76,7 @@ class ThreadSerial:
         if not self.serial or not self.serial.is_open:
             raise RuntimeError("Serial port not open")
         try:
-            self.serial.write((data + '\n').encode('utf-8'))
+            self.serial.write((data + '\r').encode('utf-8'))
         except serial.SerialException as e:
             raise RuntimeError(f"Error sending to {self.port}: {e}")
 

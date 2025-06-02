@@ -1,62 +1,139 @@
-# RaspiGUI User Guide
+# GUI User Guide
 
-RaspiGUI is a terminal-based user interface for controlling and configuring laser systems via a serial connection. This guide explains how to navigate the interface and configure settings in the **SControl** and **Laser** menus.
+## Install
 
-## Navigation
+Optional:
+```cmd
+python -m venv venv
+source venv/bin/activate   # or venv\Scripts\activate
+```
+Then:
+```cmd
+pip install -r requirements.txt
+```
 
-- **Menu Panel**: Located on the left side of the interface, it lists available options: **SControl**, **Laser**, **Tracking**, **Logs**, and **Quit**.
-- **Controls**:
-  - Use the **Up** or **Down** arrow keys to move between menu items.
-  - Press **Enter** to enter the selected menu.
-  - Press **Esc** to return to the main menu from a submenu.
-  - Press **Ctrl+C** to exit the application.
+## Run
+```cmd
+python ./obc_gui.py
+```
 
-## SControl Settings
+## Overview 
+### UI Layout
+- **Recommended**: Use a terminal emulator (e.g., Linux Terminal, Windows Terminal, iTerm2) rather than the default Windows CMD.
 
-The **SControl** menu allows you to configure system services and serial communication settings.
+- **Default Size**: 80×24 (the UI will adapt if you resize).
 
-- **Fields**:
-  - **SSH Service**: Enable or disable SSH service.
-  - **VNC Service**: Enable or disable VNC service.
-  - **Serial Port**: Enable or disable serial communication.
-  - **COM**: Select the serial port for communication.
+- **Header Section**:
+  + ***Size***: Displays the current terminal dimensions.
+  + ***Datetime***: Shows the current timestamp (updated every second).
+  + ***Status***: Shows one of:
+    + ***Active*** (application running, no serial connection yet)
+    + ***Connected*** (serial port is open to the device)
 
-- **Controls**:
-  - Use **Up** or **Down** arrow keys to highlight a field.
-  - Press **Enter** on fields like **SSH Service**, **VNC Service**, **Serial Port** to toggle between `Enabled` and `Disabled`.
-  - For the **COM** field, press **Enter** to cycle through available serial ports (e.g., COM1, COM2).
-  - After configuring, move to **[ Apply ]** using **Up** or **Down**, then press **Enter** to save changes and apply settings.
+- **Menu** (Left Panel):
+  + Use `Up` / `Down` arrow keys to navigate between items.
+  + Press `Enter` to open the selected menu.
+  + Press `Esc` to return to the main menu from any submenu.
+  + Press `Ctrl+C` to exit the application.
 
-## Laser Settings
+- **Center Panel**:
+  + ***Displays either***:
+    + ***Information View*** (details and fields for the selected submenu), or
+    + ***Terminal View*** (raw command‐line interface, see “Terminal” below).
 
-The **Laser** menu allows configuration of laser parameters and photodiode settings.
+  + ***Right Panel*** (“Send” / “Recv”):
+    + ***Send***: TBD
+    + ***Recv***: TBD
 
-- **Fields**:
-  - **ADC type**: Select ADC type (`int` or `ext`).
-  - **Laser set**: Enable or disable laser control.
-  - **Laser type**: Select laser type (`int` or `ext`).
-  - **Laser index**: Enter the laser index (numeric input).
-    - If **Laser type** is `int`: Range is **0 to 36**.
-    - If **Laser type** is `ext`: Range is **0 to 8**.
-  - **DAC voltage**: Enter the DAC voltage (numeric input, range **0 to 100**).
-  - **Get current**: Enable or disable current retrieval.
-  - **Get current type**: Select current type (`int` or `ext`).
-  - **Photodiode Get**: Enable or disable photodiode data retrieval.
-  - **Photodiode index**: Enter the photodiode index (numeric input, range **0 to 36**).
+- **Log Bar** (Bottom):
+  + Displays one line of console/log messages (e.g., “Config saved!”, “Error: …”).
+### Function - Menu subitems
+- ***PreSetup***: Configure the serial‐port connection (port name + baud rate).
+- ***Config***: Set sampling parameters `SampleRate[Sample/s]`, `SampleSet[Sample]` 
+- ***Tracking***: TBD
+- ***Manual***: Manually control the laser, read current, and read photodiode.
+- ***Terminal***: Raw command‐line interface for sending arbitrary commands over UART.
+- ***Option***: TBD
+- ***Quit***: Exit the application.
 
-- **Controls**:
-  - Use **Up** or **Down** arrow keys to highlight a field.
-  - Press **Enter** on fields like **ADC type**, **Laser set**, **Laser type**, **Get current**, **Get current type**, or **Photodiode Get** to toggle between `Enabled`/`Disabled` or switch types (`int`/`ext`).
-  - For numeric fields (**Laser index**, **DAC voltage**, **Photodiode index**):
-    - Highlight the field, then type numbers (0-9) to input a value.
-    - Use **Backspace** to delete digits.
-    - **Laser index** is restricted based on **Laser type**:
-      - `int`: 0-36.
-      - `ext`: 0-8.
-    - **DAC voltage**: 0-100.
-    - **Photodiode index**: 0-36.
-  - After configuring, move to **[ Apply ]** using **Up** or **Down**, then press **Enter** to save changes and send commands to the device.
 
-## Notes
+## Usage:
+**1. First of all - PreSetup**
+- From the main menu, navigate to `PreSetup` and press `Enter`.
+Use the Up/Down arrows to highlight each field:
 
-- Ensure a valid serial port is selected and enabled in **SControl** before sending commands in **Laser** .
+- Type Connect: TBD (Default `Serial`)
+
+- Port: Press Enter to scan for available COM ports. If multiple ports are found, each Enter will cycle through them.
+- BaudRate: Type a numeric value (e.g., 9600, 115200). Use Backspace to correct digits.
+
+- Navigate down to [ Connect ] and press Enter:
+  + If successful, Status changes to Connected and a message appears in the Log Bar (e.g., “COM3 Opened, Baudrate: 115200”).
+  + If it fails (invalid port or baud rate), an error message appears in the Log Bar.
+
+<p align="center">
+  <img src="image.png" alt="alt text" width="50%"/>
+</p>
+
+**2. Second step - Config Sample**
+- Press `Esc` to return to the main menu.
+- Navigate to `Config` and press `Enter`.
+You will see two fields:
+  + SampleSet [Sample]
+  + SampleRate [Sample/s]
+- Type numeric values (e.g., 100 for SampleSet, 500 for SampleRate).
+- Use Backspace to delete digits.
+- Navigate down to `[ Apply ]` and press `Enter`:
+  + If no serial connection is established, Log Bar shows: “Error: Communication not established.”
+  + If connected, the command `sp_set_rate <SampleRate> <SampleSet>` is sent over UART, then:
+    + The JSON file Config.json is updated,
+    + Log Bar shows “Config OK!”
+    + You return to the main menu.
+
+<p align="center">
+  <img src="image-1.png" alt="alt text" width="50%"/>
+</p>
+
+**3. Main step - Control and Monitor Data**
+- 1. Press `Esc` to return to the main menu.
+- 2. Navigate to `Manual` and press `Enter`.
+You will see several fields. Use Up/Down and Enter to:
+      + Toggle `ADC Peripheral` between `External/Internal`.
+      + Toggle `Laser Type` between `Internal/External`.
+      + Edit `Laser Index` (integer from 0 to 36).
+      + Edit `Laser DAC` (integer from 0 to 100).
+      + Toggle `Current Type` between `Internal/External`.
+      + Edit `PhotoDiode Index` (integer from 0 to 36).
+- 3. Once you set these values, use Up/Down to highlight one of the three “Send” commands:
+      + `$: > [Send – Laser Set]`: Sends    `set_laser <int/ext> <LaserIndex> <LaserDAC>` over UART.
+      + `$: > [Send – Current Get]`: Sends `get_current <int/ext>` over UART.
+      + `$: > [Send – PhotoDiode Get]` (three‐step process):
+        + `Step 0 – [Send – PhotoDiode Set]`: Sends `sp_set_pd <PhotoDiodeIndex>` over UART.
+        + `Step 1 – [Send – Trigger Read]`: Sends `sp_trig` over UART.
+        + `Step 2 – [Send – PhotoDiode Get]`: 
+          + Sets up a data‐logging file at `./Data/Index<Index>_<Timestamp>.log`.
+          + Sends `sp_get_buf_c` over UART.
+          + Device begins streaming photodiode data into that file (close it to stop).
+      + If any UART send fails (no connection), Log Bar shows `“Error: Communication not established.”`
+- 4. After each successful send, a `“Sent: OK”`message appears in the `Log Bar`.
+- 5. **To stop photodiode logging, go back to `Step 2 – [Send – PhotoDiode Get]`, press Enter again to toggle “Close,” which closes the data file and stops logging.**
+
+<p align="center">
+  <img src="image-2.png" alt="alt text" width="50%"/>
+</p>
+
+
+**4. Terminal - Raw Command‐Line Interface**
+- Press `Esc` to return to the main menu.
+- Navigate to `Terminal` and press `Enter`.
+  You see a console with:
+    - **Log area (top)**: Scrolls recent commands and responses (up to N lines).
+    - **Input area (bottom, titled `“Input”`)**: One‐line prompt `>>>` .
+- Type any valid command string and press `Enter`.
+- All raw UART traffic (both send and receive) is also saved to:
+  - Application log: `./Log/Log_<Timestamp>.log`
+  - Realtime display in the `Terminal` window.
+
+<p align="center">
+  <img src="image-3.png" alt="alt text" width="50%"/>
+</p>
