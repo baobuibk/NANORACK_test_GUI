@@ -72,7 +72,7 @@ Use the Up/Down arrows to highlight each field:
   + If it fails (invalid port or baud rate), an error message appears in the Log Bar.
 
 <p align="center">
-  <img src="image.png" alt="alt text" width="50%"/>
+  <img src="./Docs/image.png" alt="alt text" width="50%"/>
 </p>
 
 **2. Second step - Config Sample**
@@ -91,7 +91,7 @@ You will see two fields:
     + You return to the main menu.
 
 <p align="center">
-  <img src="image-1.png" alt="alt text" width="50%"/>
+  <img src="./Docs/image-1.png" alt="alt text" width="50%"/>
 </p>
 
 **3. Main step - Control and Monitor Data**
@@ -119,7 +119,7 @@ You will see several fields. Use Up/Down and Enter to:
 - 5. **To stop photodiode logging, go back to `Step 2 – [Send – PhotoDiode Get]`, press Enter again to toggle “Close,” which closes the data file and stops logging.**
 
 <p align="center">
-  <img src="image-2.png" alt="alt text" width="50%"/>
+  <img src="./Docs/image-2.png" alt="alt text" width="50%"/>
 </p>
 
 
@@ -135,5 +135,5 @@ You will see several fields. Use Up/Down and Enter to:
   - Realtime display in the `Terminal` window.
 
 <p align="center">
-  <img src="image-3.png" alt="alt text" width="50%"/>
+  <img src="./Docs/image-3.png" alt="alt text" width="50%"/>
 </p>
